@@ -15,6 +15,8 @@ from typing import Any
 _context_id_var: ContextVar[str] = ContextVar("context_id", default="")
 _LEVELS = {"debug": 0, "info": 1, "warning": 2, "error": 3}
 _LOGGER_FILE = os.path.abspath(__file__)
+_MAX_LOG_STRING_LENGTH = 1000
+_LOG_TRUNCATION_MARKER = "...<truncated>..."
 
 
 @dataclass
@@ -141,6 +143,34 @@ def _enrich_with_exception(
     return enriched
 
 
+def _sanitize_for_log(value: Any) -> Any:
+    if isinstance(value, str):
+        if len(value) <= _MAX_LOG_STRING_LENGTH:
+            return value
+        budget = _MAX_LOG_STRING_LENGTH - len(_LOG_TRUNCATION_MARKER)
+        prefix_length = budget // 2
+        suffix_length = budget - prefix_length
+        return (
+            value[:prefix_length]
+            + _LOG_TRUNCATION_MARKER
+            + value[-suffix_length:]
+        )
+
+    if isinstance(value, bytes):
+        return {
+            "type": "bytes",
+            "length": len(value),
+        }
+
+    if isinstance(value, dict):
+        return {str(key): _sanitize_for_log(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_log(item) for item in value]
+
+    return value
+
+
 def _write(
     level: str,
     topic: str,
@@ -161,6 +191,8 @@ def _write(
     active_exc = exc or sys.exc_info()[1]
     if active_exc is not None:
         record["data"] = _enrich_with_exception(data, active_exc)
+
+    record["data"] = _sanitize_for_log(record["data"])
 
     try:
         with filepath.open("a", encoding="utf-8") as handle:

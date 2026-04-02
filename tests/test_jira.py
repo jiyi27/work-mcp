@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import patch
 
+from work_assistant_mcp import logger
 from work_assistant_mcp.config import Settings
 from work_assistant_mcp.server import create_mcp
 from work_assistant_mcp.tools.jira.client import JiraApiError
@@ -141,6 +143,63 @@ def test_jira_get_attachment_image_returns_single_attachment_content() -> None:
             "base64": "cG5nLWJ5dGVz",
         },
     }
+
+
+def test_jira_get_attachment_image_log_truncates_large_base64(tmp_path: Path) -> None:
+    search_results = [
+        {
+            "key": "IOS-123",
+            "fields": {
+                "summary": "Crash on launch",
+                "description": "Steps to reproduce",
+                "status": {"name": "Todo"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "user@example.invalid"},
+                "updated": "2026-04-02T10:00:00.000+0800",
+                "attachment": [
+                    {
+                        "id": "10",
+                        "filename": "crash.png",
+                        "mimeType": "image/png",
+                        "size": 123,
+                        "content": "https://jira.example.invalid/attachment/1",
+                    }
+                ],
+            },
+        }
+    ]
+    logger.configure(log_dir=tmp_path, level="info")
+    mcp = create_mcp(_make_settings(log_dir=tmp_path))
+    with patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        return_value=search_results,
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        return_value=frozenset({"user@example.invalid"}),
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.download_attachment",
+        return_value=b"a" * 800,
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool(
+                "jira_get_attachment_image",
+                {"issue_key": "IOS-123", "attachment_id": "10"},
+            )
+        )
+
+    assert structured["success"] is True
+    files = list(tmp_path.glob("*.info.log"))
+    assert len(files) == 1
+    records = [
+        json.loads(line)
+        for line in files[0].read_text(encoding="utf-8").splitlines()
+    ]
+    completed = next(record for record in records if record["topic"] == "tool.completed")
+    base64_field = completed["data"]["result"]["attachment"]["base64"]
+    assert isinstance(base64_field, str)
+    assert len(base64_field) == 1000
+    assert "...<truncated>..." in base64_field
 
 
 def test_jira_get_attachment_image_rejects_unknown_attachment() -> None:

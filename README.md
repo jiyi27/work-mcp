@@ -131,6 +131,10 @@ Call one tool:
 ```bash
 uv run python scripts/preview_tool.py call dingtalk_send_markdown \
   --args '{"title":"Smoke Test","markdown":"hello from local preview"}'
+  
+
+uv run python scripts/preview_tool.py call jira_get_attachment_image \
+  --args '{"issue_key":"PAKISTAN-174","attachment_id":"24132"}'
 ```
 
 Run smoke tests:

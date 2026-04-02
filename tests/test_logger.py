@@ -57,3 +57,27 @@ def test_configure_rejects_unknown_level(tmp_path: Path) -> None:
         assert "Unknown log level" in str(exc)
     else:
         raise AssertionError("Expected ValueError for invalid log level")
+
+
+def test_info_truncates_long_string_fields(tmp_path: Path) -> None:
+    logger.configure(log_dir=tmp_path, level="info")
+
+    logger.info("tool.completed", {"result": {"base64": "a" * 600}})
+
+    record = _read_single_record(tmp_path, "info")
+    assert record["data"]["result"]["base64"] == "a" * 600
+
+
+def test_info_preserves_prefix_and_suffix_when_truncating_long_string_fields(tmp_path: Path) -> None:
+    logger.configure(log_dir=tmp_path, level="info")
+    long_value = ("prefix-" * 120) + ("middle-" * 120) + ("-suffix" * 120)
+
+    logger.info("tool.completed", {"result": {"base64": long_value}})
+
+    record = _read_single_record(tmp_path, "info")
+    base64_field = record["data"]["result"]["base64"]
+    assert isinstance(base64_field, str)
+    assert len(base64_field) == 1000
+    assert "...<truncated>..." in base64_field
+    assert base64_field.startswith(long_value[:100])
+    assert base64_field.endswith(long_value[-100:])
