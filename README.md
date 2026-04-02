@@ -95,9 +95,11 @@ Environment variables take priority over `config.yaml`. This is useful for CI/CD
 
 ## Adding a New Tool
 
-1. Implement `register_<name>_tools(mcp: FastMCP, settings: Settings)` in `src/work_assistant_mcp/tools/<name>.py`.
-2. Add an entry to `INTEGRATION_REGISTRY` in `src/work_assistant_mcp/tools/__init__.py`.
-3. Add the integration name to `integrations.enabled` in `config.yaml`.
+1. Implement `register_<name>_tools(mcp: FastMCP, settings: Settings)` under `src/work_assistant_mcp/tools/`.
+2. Keep simple integrations in a single module such as `src/work_assistant_mcp/tools/<name>.py`.
+3. When an integration grows into multiple focused files, group it as a package such as `src/work_assistant_mcp/tools/<name>/`.
+4. Add an entry to `INTEGRATION_REGISTRY` in `src/work_assistant_mcp/tools/__init__.py`.
+5. Add the integration name to `integrations.enabled` in `config.yaml`.
 
 ## Agent Setup
 
