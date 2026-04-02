@@ -7,6 +7,8 @@ from ...config import Settings
 from ...hints import (
     INTERNAL_ERROR_RETRY_HINT,
     jira_accept_invalid_status_hint,
+    jira_assignee_not_allowed_hint,
+    jira_attachment_not_found_hint,
     jira_issue_not_found_hint,
     jira_project_not_allowed_hint,
     jira_resolve_invalid_status_hint,
@@ -23,6 +25,7 @@ JIRA_ISSUE_FIELDS = (
     "status",
     "priority",
     "issuetype",
+    "assignee",
     "attachment",
     "updated",
 )
@@ -66,6 +69,112 @@ class JiraService:
                 "issue_type": issue.issue_type,
             },
             "attachments": attachments,
+        }
+
+    def get_attachment_image(self, issue_key: str, attachment_id: str) -> dict[str, Any]:
+        issue_key = issue_key.strip()
+        attachment_id = attachment_id.strip()
+        if not issue_key:
+            return {
+                "success": False,
+                "error_type": "invalid_input",
+                "hint": required_param_hint("issue_key"),
+            }
+        if not attachment_id:
+            return {
+                "success": False,
+                "error_type": "invalid_input",
+                "hint": required_param_hint("attachment_id"),
+            }
+
+        try:
+            issue = self._get_issue_by_key(issue_key)
+        except JiraApiError as exc:
+            error("jira.get_attachment_image.lookup_failed", {"issue_key": issue_key}, exc=exc)
+            return self._internal_error(f"Jira API error while looking up {issue_key}: {exc.message}")
+
+        if issue is None:
+            warning("jira.get_attachment_image.issue_not_found", {"issue_key": issue_key})
+            return {
+                "success": False,
+                "error_type": "issue_not_found",
+                "hint": jira_issue_not_found_hint(issue_key),
+            }
+
+        if not self._is_allowed_project(issue.key):
+            warning("jira.get_attachment_image.project_not_allowed", {"issue_key": issue.key})
+            return {
+                "success": False,
+                "error_type": "project_not_allowed",
+                "hint": jira_project_not_allowed_hint(issue.key),
+            }
+
+        try:
+            current_user_identifiers = self._client.get_current_user_identifiers()
+        except JiraApiError as exc:
+            error("jira.get_attachment_image.assignee_check_failed", {"issue_key": issue_key}, exc=exc)
+            return self._internal_error(
+                f"Jira API error while checking assignee for {issue_key}: {exc.message}"
+            )
+
+        if not issue.assignee.identifiers().intersection(current_user_identifiers):
+            warning("jira.get_attachment_image.assignee_not_allowed", {"issue_key": issue.key})
+            return {
+                "success": False,
+                "error_type": "assignee_not_allowed",
+                "hint": jira_assignee_not_allowed_hint(issue.key),
+            }
+
+        attachment = self._find_image_attachment(issue, attachment_id)
+        if attachment is None:
+            warning(
+                "jira.get_attachment_image.attachment_not_found",
+                {"issue_key": issue.key, "attachment_id": attachment_id},
+            )
+            return {
+                "success": False,
+                "error_type": "attachment_not_found",
+                "hint": jira_attachment_not_found_hint(issue.key, attachment_id),
+            }
+
+        content_url = str(attachment.get("content") or "")
+        if not content_url:
+            return self._internal_error(
+                f"Jira attachment {attachment_id} on {issue_key} did not include a downloadable content URL."
+            )
+
+        try:
+            raw = self._client.download_attachment(content_url)
+        except JiraApiError as exc:
+            error(
+                "jira.get_attachment_image.download_failed",
+                {"issue_key": issue.key, "attachment_id": attachment_id},
+                exc=exc,
+            )
+            return self._internal_error(
+                f"Jira API error while downloading attachment {attachment_id} on {issue_key}: {exc.message}"
+            )
+
+        if len(raw) > self._settings.jira_attachment_max_bytes:
+            warning(
+                "jira.get_attachment_image.attachment_too_large",
+                {"issue_key": issue.key, "attachment_id": attachment_id, "size_bytes": len(raw)},
+            )
+            return self._internal_error(
+                f"Jira attachment {attachment_id} on {issue_key} exceeded the configured size limit."
+            )
+
+        mime_type = str(attachment.get("mimeType") or "")
+        info("jira.get_attachment_image.succeeded", {"issue_key": issue.key, "attachment_id": attachment_id})
+        return {
+            "success": True,
+            "issue_key": issue.key,
+            "attachment": {
+                "attachment_id": attachment_id,
+                "filename": str(attachment.get("filename") or ""),
+                "mime_type": mime_type,
+                "base64": base64.b64encode(raw).decode("ascii"),
+            },
         }
 
     def accept_issue(self, issue_key: str) -> dict[str, Any]:
@@ -131,6 +240,22 @@ class JiraService:
                 "hint": jira_project_not_allowed_hint(issue.key),
             }
 
+        try:
+            current_user_identifiers = self._client.get_current_user_identifiers()
+        except JiraApiError as exc:
+            error(success_topic.replace(".succeeded", ".assignee_check_failed"), {"issue_key": issue_key}, exc=exc)
+            return self._internal_error(
+                f"Jira API error while checking assignee for {issue_key}: {exc.message}"
+            )
+
+        if not issue.assignee.identifiers().intersection(current_user_identifiers):
+            warning(success_topic.replace(".succeeded", ".assignee_not_allowed"), {"issue_key": issue.key})
+            return {
+                "success": False,
+                "error_type": "assignee_not_allowed",
+                "hint": jira_assignee_not_allowed_hint(issue.key),
+            }
+
         if issue.status.lower() not in expected_statuses:
             warning(
                 success_topic.replace(".succeeded", ".invalid_status"),
@@ -194,7 +319,7 @@ class JiraService:
     def _get_issue_by_key(self, issue_key: str) -> JiraIssue | None:
         issues = self._client.search_issues(
             jql=f'key = "{issue_key}"',
-            fields=("status", "summary", "description", "priority", "issuetype", "updated"),
+            fields=JIRA_ISSUE_FIELDS,
             max_results=1,
         )
         if not issues:
@@ -222,44 +347,32 @@ class JiraService:
 
     def _serialize_attachments(self, issue: JiraIssue) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        for attachment in issue.attachments[: self._settings.jira_attachment_max_images]:
+        for attachment in issue.attachments:
             mime_type = str(attachment.get("mimeType") or "")
             if not mime_type.startswith("image/"):
                 continue
-
-            content_url = str(attachment.get("content") or "")
-            if not content_url:
-                continue
-
-            try:
-                raw = self._client.download_attachment(content_url)
-            except JiraApiError as exc:
-                warning(
-                    "jira.get_latest_assigned_issue.attachment_failed",
-                    {"issue_key": issue.key, "filename": attachment.get("filename", "")},
-                    exc=exc,
-                )
-                continue
-
-            if len(raw) > self._settings.jira_attachment_max_bytes:
-                warning(
-                    "jira.get_latest_assigned_issue.attachment_too_large",
-                    {
-                        "issue_key": issue.key,
-                        "filename": attachment.get("filename", ""),
-                        "size_bytes": len(raw),
-                    },
-                )
-                continue
-
             results.append(
                 {
+                    "attachment_id": str(attachment.get("id") or ""),
                     "filename": str(attachment.get("filename") or ""),
                     "mime_type": mime_type,
-                    "base64": base64.b64encode(raw).decode("ascii"),
+                    "size_bytes": int(attachment.get("size") or 0),
                 }
             )
+            if len(results) >= self._settings.jira_attachment_max_images:
+                break
         return results
+
+    @staticmethod
+    def _find_image_attachment(issue: JiraIssue, attachment_id: str) -> dict[str, Any] | None:
+        for attachment in issue.attachments:
+            if str(attachment.get("id") or "").strip() != attachment_id:
+                continue
+            mime_type = str(attachment.get("mimeType") or "")
+            if not mime_type.startswith("image/"):
+                return None
+            return attachment
+        return None
 
     @staticmethod
     def _find_transition(

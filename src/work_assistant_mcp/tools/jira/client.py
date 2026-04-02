@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import base64
-import json
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 from ...config import Settings
+from ...http import HttpRequestError, request_bytes, request_json
+from .models import JiraUser
 
 
 JIRA_TIMEOUT_SECONDS = 30
@@ -27,6 +25,7 @@ class JiraClient:
         self._base_url = self._require(settings.jira_base_url, "JIRA_BASE_URL")
         self._email = self._require(settings.jira_email, "JIRA_EMAIL")
         self._api_token = self._require(settings.jira_api_token, "JIRA_API_TOKEN")
+        self._current_user_identifiers: frozenset[str] | None = None
 
     @staticmethod
     def _require(value: str | None, env_name: str) -> str:
@@ -47,38 +46,21 @@ class JiraClient:
         payload: dict[str, Any] | None = None,
         timeout: int = JIRA_TIMEOUT_SECONDS,
     ) -> Any:
-        url = f"{self._base_url}{path}"
-        if query:
-            url = f"{url}?{urlencode(query)}"
-
-        body = None
-        headers = {
-            "Accept": "application/json",
-            "Authorization": self._auth_header(),
-        }
-        if payload is not None:
-            body = json.dumps(payload).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-
-        request = Request(url, data=body, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=timeout) as response:
-                raw = response.read()
-        except HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")
-            raise JiraApiError(
-                f"Jira request failed with HTTP {exc.code}: {error_body}",
-                status_code=exc.code,
-            ) from exc
-        except URLError as exc:
-            raise JiraApiError(f"Failed to reach Jira: {exc.reason}") from exc
-
-        if not raw:
-            return None
-        try:
-            return json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise JiraApiError("Jira returned invalid JSON.") from exc
+            return request_json(
+                method=method,
+                url=f"{self._base_url}{path}",
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": self._auth_header(),
+                },
+                query=query,
+                payload=payload,
+                timeout=timeout,
+                service_name="Jira",
+            )
+        except HttpRequestError as exc:
+            raise JiraApiError(exc.message, status_code=exc.status_code) from exc
 
     def search_issues(self, *, jql: str, fields: tuple[str, ...], max_results: int) -> list[dict[str, Any]]:
         payload = self._request(
@@ -112,23 +94,32 @@ class JiraClient:
             payload={"transition": {"id": transition_id}},
         )
 
-    def download_attachment(self, url: str) -> bytes:
-        request = Request(
-            url,
-            headers={
-                "Accept": "*/*",
-                "Authorization": self._auth_header(),
-            },
+    def get_current_user_identifiers(self) -> frozenset[str]:
+        if self._current_user_identifiers is not None:
+            return self._current_user_identifiers
+
+        payload = self._request(
             method="GET",
+            path="/rest/api/2/myself",
         )
+        user = JiraUser.from_api(payload)
+        identifiers = user.identifiers()
+        if not identifiers:
+            raise JiraApiError("Jira myself response did not contain a usable user identity.")
+        self._current_user_identifiers = identifiers
+        return identifiers
+
+    def download_attachment(self, url: str) -> bytes:
         try:
-            with urlopen(request, timeout=JIRA_ATTACHMENT_TIMEOUT_SECONDS) as response:
-                return response.read()
-        except HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")
-            raise JiraApiError(
-                f"Jira attachment download failed with HTTP {exc.code}: {error_body}",
-                status_code=exc.code,
-            ) from exc
-        except URLError as exc:
-            raise JiraApiError(f"Failed to download Jira attachment: {exc.reason}") from exc
+            return request_bytes(
+                method="GET",
+                url=url,
+                headers={
+                    "Accept": "*/*",
+                    "Authorization": self._auth_header(),
+                },
+                timeout=JIRA_ATTACHMENT_TIMEOUT_SECONDS,
+                service_name="Jira attachment download",
+            )
+        except HttpRequestError as exc:
+            raise JiraApiError(exc.message, status_code=exc.status_code) from exc

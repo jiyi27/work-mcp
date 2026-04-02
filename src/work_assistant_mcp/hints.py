@@ -45,3 +45,18 @@ def jira_project_not_allowed_hint(issue_key: str) -> str:
         f"{issue_key} is outside the configured Jira project scope. "
         "Do not retry this write operation. Stop and notify the user."
     )
+
+
+def jira_assignee_not_allowed_hint(issue_key: str) -> str:
+    return (
+        f"{issue_key} is not currently assigned to you. "
+        "Do not retry this write operation unless the issue is reassigned to you. "
+        "Stop and notify the user."
+    )
+
+
+def jira_attachment_not_found_hint(issue_key: str, attachment_id: str) -> str:
+    return (
+        f"Attachment {attachment_id} was not found on {issue_key}, or it is not a supported image attachment. "
+        "Do not guess another attachment id. Stop and notify the user."
+    )

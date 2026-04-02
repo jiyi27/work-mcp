@@ -7,7 +7,7 @@ Tools are grouped by integration. Each integration is enabled or disabled as a u
 | Integration | Tools                                                               |
 | ----------- | ------------------------------------------------------------------- |
 | `dingtalk`  | `dingtalk_send_markdown`                                            |
-| `jira`      | `jira_get_latest_assigned_issue`, `jira_accept_issue`, `jira_resolve_issue` |
+| `jira`      | `jira_get_latest_assigned_issue`, `jira_get_attachment_image`, `jira_accept_issue`, `jira_resolve_issue` |
 
 ## Configuration
 

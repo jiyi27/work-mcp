@@ -13,8 +13,13 @@ def register_jira_tools(mcp: FastMCP, settings: Settings) -> None:
 
     @mcp.tool()
     def jira_get_latest_assigned_issue() -> dict[str, Any]:
-        """Fetch the most recently updated open issue assigned to the current user, including image attachments encoded as base64."""
+        """Fetch the most recently updated open issue assigned to the current user, including image attachment metadata."""
         return service.get_latest_assigned_issue()
+
+    @mcp.tool()
+    def jira_get_attachment_image(issue_key: str, attachment_id: str) -> dict[str, Any]:
+        """Fetch one Jira image attachment when you need the actual image content for an issue you are working on."""
+        return service.get_attachment_image(issue_key, attachment_id)
 
     @mcp.tool()
     def jira_accept_issue(issue_key: str) -> dict[str, Any]:

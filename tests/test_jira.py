@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +30,7 @@ def _make_settings(**overrides: object) -> Settings:
     return Settings(**defaults)  # type: ignore[arg-type]
 
 
-def test_jira_get_latest_assigned_issue_returns_issue_with_base64_attachment() -> None:
+def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata() -> None:
     search_results = [
         {
             "key": "IOS-123",
@@ -44,8 +43,10 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_base64_attachment() -
                 "updated": "2026-04-02T10:00:00.000+0800",
                 "attachment": [
                     {
+                        "id": "10",
                         "filename": "crash.png",
                         "mimeType": "image/png",
+                        "size": 123,
                         "content": "https://jira.example.invalid/attachment/1",
                     }
                 ],
@@ -56,9 +57,6 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_base64_attachment() -
     with patch(
         "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
-    ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.download_attachment",
-        return_value=b"png-bytes",
     ):
         _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
 
@@ -74,11 +72,107 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_base64_attachment() -
         },
         "attachments": [
             {
+                "attachment_id": "10",
                 "filename": "crash.png",
                 "mime_type": "image/png",
-                "base64": base64.b64encode(b"png-bytes").decode("ascii"),
+                "size_bytes": 123,
             }
         ],
+    }
+
+
+def test_jira_get_attachment_image_returns_single_attachment_content() -> None:
+    search_results = [
+        {
+            "key": "IOS-123",
+            "fields": {
+                "summary": "Crash on launch",
+                "description": "Steps to reproduce",
+                "status": {"name": "Todo"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "user@example.invalid"},
+                "updated": "2026-04-02T10:00:00.000+0800",
+                "attachment": [
+                    {
+                        "id": "10",
+                        "filename": "crash.png",
+                        "mimeType": "image/png",
+                        "size": 123,
+                        "content": "https://jira.example.invalid/attachment/1",
+                    }
+                ],
+            },
+        }
+    ]
+    mcp = create_mcp(_make_settings())
+    with patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        return_value=search_results,
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        return_value=frozenset({"user@example.invalid"}),
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.download_attachment",
+        return_value=b"png-bytes",
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool(
+                "jira_get_attachment_image",
+                {"issue_key": "IOS-123", "attachment_id": "10"},
+            )
+        )
+
+    assert structured == {
+        "success": True,
+        "issue_key": "IOS-123",
+        "attachment": {
+            "attachment_id": "10",
+            "filename": "crash.png",
+            "mime_type": "image/png",
+            "base64": "cG5nLWJ5dGVz",
+        },
+    }
+
+
+def test_jira_get_attachment_image_rejects_unknown_attachment() -> None:
+    search_results = [
+        {
+            "key": "IOS-123",
+            "fields": {
+                "summary": "Crash on launch",
+                "description": "Steps to reproduce",
+                "status": {"name": "Todo"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "user@example.invalid"},
+                "updated": "2026-04-02T10:00:00.000+0800",
+                "attachment": [],
+            },
+        }
+    ]
+    mcp = create_mcp(_make_settings())
+    with patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        return_value=search_results,
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        return_value=frozenset({"user@example.invalid"}),
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool(
+                "jira_get_attachment_image",
+                {"issue_key": "IOS-123", "attachment_id": "10"},
+            )
+        )
+
+    assert structured == {
+        "success": False,
+        "error_type": "attachment_not_found",
+        "hint": (
+            "Attachment 10 was not found on IOS-123, or it is not a supported image attachment. "
+            "Do not guess another attachment id. Stop and notify the user."
+        ),
     }
 
 
@@ -92,6 +186,7 @@ def test_jira_accept_issue_rejects_non_todo_status() -> None:
                 "status": {"name": "In Progress"},
                 "priority": {"name": "High"},
                 "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "user@example.invalid"},
                 "updated": "2026-04-02T10:00:00.000+0800",
             },
         }
@@ -100,6 +195,9 @@ def test_jira_accept_issue_rejects_non_todo_status() -> None:
     with patch(
         "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        return_value=frozenset({"user@example.invalid"}),
     ):
         _, structured = asyncio.run(
             mcp.call_tool("jira_accept_issue", {"issue_key": "IOS-123"})
@@ -126,6 +224,7 @@ def test_jira_resolve_issue_transitions_successfully() -> None:
                 "status": {"name": "已接收"},
                 "priority": {"name": "High"},
                 "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "user@example.invalid"},
                 "updated": "2026-04-02T10:00:00.000+0800",
             },
         }
@@ -134,6 +233,9 @@ def test_jira_resolve_issue_transitions_successfully() -> None:
     with patch(
         "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        return_value=frozenset({"user@example.invalid"}),
     ), patch(
         "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
         return_value=[{"id": "31", "name": "已解决"}],
@@ -159,6 +261,7 @@ def test_jira_accept_issue_rejects_write_outside_configured_project() -> None:
                 "status": {"name": "Todo"},
                 "priority": {"name": "High"},
                 "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "user@example.invalid"},
                 "updated": "2026-04-02T10:00:00.000+0800",
             },
         }
@@ -178,5 +281,43 @@ def test_jira_accept_issue_rejects_write_outside_configured_project() -> None:
         "hint": (
             "ANDROID-123 is outside the configured Jira project scope. "
             "Do not retry this write operation. Stop and notify the user."
+        ),
+    }
+
+
+def test_jira_accept_issue_rejects_issue_not_assigned_to_current_user() -> None:
+    lookup_results = [
+        {
+            "key": "IOS-123",
+            "fields": {
+                "summary": "Crash on launch",
+                "description": "Steps to reproduce",
+                "status": {"name": "Todo"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "故障"},
+                "assignee": {"emailAddress": "someone-else@example.invalid"},
+                "updated": "2026-04-02T10:00:00.000+0800",
+            },
+        }
+    ]
+    mcp = create_mcp(_make_settings())
+    with patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        return_value=lookup_results,
+    ), patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        return_value=frozenset({"user@example.invalid"}),
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool("jira_accept_issue", {"issue_key": "IOS-123"})
+        )
+
+    assert structured == {
+        "success": False,
+        "error_type": "assignee_not_allowed",
+        "hint": (
+            "IOS-123 is not currently assigned to you. "
+            "Do not retry this write operation unless the issue is reassigned to you. "
+            "Stop and notify the user."
         ),
     }

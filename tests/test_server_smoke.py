@@ -157,6 +157,7 @@ def test_enabled_integrations_can_register_jira_only() -> None:
     tools = asyncio.run(mcp.list_tools())
     assert [tool.name for tool in tools] == [
         "jira_get_latest_assigned_issue",
+        "jira_get_attachment_image",
         "jira_accept_issue",
         "jira_resolve_issue",
     ]

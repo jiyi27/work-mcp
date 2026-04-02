@@ -50,3 +50,9 @@
 - Format: `<type>: <summary>` or `<type>(<scope>): <summary>`.
 - Common types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
 - Keep messages short, specific, and lowercase.
+
+## Final Response Requirement For LLM Agents
+
+- After any change to code, tests, docs, or configuration files, include one suggested commit message in the final response.
+- Follow the commit message format above.
+- Put it on its own line prefixed with `Suggested commit message:`.
