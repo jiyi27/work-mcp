@@ -16,7 +16,7 @@ def _make_settings(**overrides: object) -> Settings:
         jira_base_url="https://jira.example.invalid",
         jira_email="user@example.invalid",
         jira_api_token="jira-token",
-        jira_project_keys=("IOS",),
+        jira_project_key="IOS",
         log_dir=Path("logs"),
         log_level="info",
         server_name="work-assistant-mcp",
@@ -147,3 +147,36 @@ def test_jira_resolve_issue_transitions_successfully() -> None:
 
     transition_mock.assert_called_once_with("IOS-123", "31")
     assert structured == {"success": True, "issue_key": "IOS-123"}
+
+
+def test_jira_accept_issue_rejects_write_outside_configured_project() -> None:
+    search_results = [
+        {
+            "key": "ANDROID-123",
+            "fields": {
+                "summary": "Crash on launch",
+                "description": "Steps to reproduce",
+                "status": {"name": "Todo"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "故障"},
+                "updated": "2026-04-02T10:00:00.000+0800",
+            },
+        }
+    ]
+    mcp = create_mcp(_make_settings(jira_project_key="IOS"))
+    with patch(
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        return_value=search_results,
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool("jira_accept_issue", {"issue_key": "ANDROID-123"})
+        )
+
+    assert structured == {
+        "success": False,
+        "error_type": "project_not_allowed",
+        "hint": (
+            "ANDROID-123 is outside the configured Jira project scope. "
+            "Do not retry this write operation. Stop and notify the user."
+        ),
+    }

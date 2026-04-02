@@ -21,7 +21,7 @@ def _make_settings(**overrides: object) -> Settings:
         jira_base_url="https://jira.example.invalid",
         jira_email="user@example.invalid",
         jira_api_token="jira-token",
-        jira_project_keys=("IOS",),
+        jira_project_key="IOS",
         log_dir=Path("logs"),
         log_level="info",
         server_name="work-assistant-mcp",

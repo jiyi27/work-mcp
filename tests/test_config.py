@@ -29,7 +29,7 @@ jira:
                 "JIRA_BASE_URL=https://jira.example.invalid",
                 "JIRA_EMAIL=user@example.invalid",
                 "JIRA_API_TOKEN=secret-token",
-                "JIRA_PROJECT_KEYS=IOS",
+                "JIRA_PROJECT_KEY=IOS",
             ]
         ),
         encoding="utf-8",
@@ -47,7 +47,7 @@ jira:
     assert settings.enabled_integrations == ("jira",)
     assert settings.dingtalk_webhook_url == ""
     assert settings.jira_base_url == "https://jira.example.invalid"
-    assert settings.jira_project_keys == ("IOS",)
+    assert settings.jira_project_key == "IOS"
 
 
 def test_get_settings_requires_jira_credentials_when_jira_enabled(
@@ -102,7 +102,7 @@ jira:
                 "JIRA_BASE_URL=https://jira.example.invalid",
                 "JIRA_EMAIL=user@example.invalid",
                 "JIRA_API_TOKEN=secret-token",
-                "JIRA_PROJECT_KEYS=IOS",
+                "JIRA_PROJECT_KEY=IOS",
             ]
         ),
         encoding="utf-8",

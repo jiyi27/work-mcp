@@ -38,3 +38,10 @@ def jira_resolve_invalid_status_hint(issue_key: str) -> str:
         "move it to an Accepted state, then retry. "
         "If still failing, stop and notify the user."
     )
+
+
+def jira_project_not_allowed_hint(issue_key: str) -> str:
+    return (
+        f"{issue_key} is outside the configured Jira project scope. "
+        "Do not retry this write operation. Stop and notify the user."
+    )

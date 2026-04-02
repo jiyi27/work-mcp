@@ -8,6 +8,7 @@ from ...hints import (
     INTERNAL_ERROR_RETRY_HINT,
     jira_accept_invalid_status_hint,
     jira_issue_not_found_hint,
+    jira_project_not_allowed_hint,
     jira_resolve_invalid_status_hint,
     required_param_hint,
 )
@@ -121,6 +122,14 @@ class JiraService:
                 "hint": jira_issue_not_found_hint(issue_key),
             }
 
+        if not self._is_allowed_project(issue.key):
+            warning(success_topic.replace(".succeeded", ".project_not_allowed"), {"issue_key": issue.key})
+            return {
+                "success": False,
+                "error_type": "project_not_allowed",
+                "hint": jira_project_not_allowed_hint(issue.key),
+            }
+
         if issue.status.lower() not in expected_statuses:
             warning(
                 success_topic.replace(".succeeded", ".invalid_status"),
@@ -194,15 +203,23 @@ class JiraService:
         return JiraIssue.from_api(issues[0])
 
     def _build_assigned_fault_jql(self) -> str:
-        if not self._settings.jira_project_keys:
+        if not self._settings.jira_project_key:
             raise RuntimeError(
-                "Missing jira.project_keys in config.yaml. Configure at least one Jira project key."
+                "Missing JIRA_PROJECT_KEY in environment or .env. Configure one Jira project key."
             )
-        project_keys = ",".join(self._settings.jira_project_keys)
         return (
-            f"project in ({project_keys}) AND assignee = currentUser() "
+            f'project = "{self._settings.jira_project_key}" AND assignee = currentUser() '
             f"AND {OPEN_STATUS_CLAUSE} ORDER BY updated DESC"
         )
+
+    def _is_allowed_project(self, issue_key: str) -> bool:
+        configured_project = self._settings.jira_project_key
+        if not configured_project:
+            return False
+        issue_project = issue_key.split("-", 1)[0].strip()
+        if not issue_project:
+            return False
+        return issue_project.lower() == configured_project.lower()
 
     def _serialize_attachments(self, issue: JiraIssue) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []

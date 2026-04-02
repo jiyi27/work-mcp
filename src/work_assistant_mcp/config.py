@@ -23,7 +23,7 @@ class Settings:
     jira_base_url: str | None
     jira_email: str | None
     jira_api_token: str | None
-    jira_project_keys: tuple[str, ...]
+    jira_project_key: str | None
     # non-sensitive — loaded from config.yaml (env can override)
     log_dir: Path
     log_level: str
@@ -108,8 +108,8 @@ def validate_settings(settings: Settings) -> None:
             errors.append("jira: missing JIRA_EMAIL in environment or .env")
         if not settings.jira_api_token:
             errors.append("jira: missing JIRA_API_TOKEN in environment or .env")
-        if not settings.jira_project_keys:
-            errors.append("jira: missing JIRA_PROJECT_KEYS in environment or .env")
+        if not settings.jira_project_key:
+            errors.append("jira: missing JIRA_PROJECT_KEY in environment or .env")
         if not settings.jira_accept_transitions:
             errors.append(
                 "jira: missing jira.accept_transitions in config.yaml"
@@ -142,11 +142,7 @@ def get_settings() -> Settings:
     jira_base_url = os.getenv("JIRA_BASE_URL", "").strip() or None
     jira_email = os.getenv("JIRA_EMAIL", "").strip() or None
     jira_api_token = os.getenv("JIRA_API_TOKEN", "").strip() or None
-    jira_project_keys = tuple(
-        item.strip()
-        for item in os.getenv("JIRA_PROJECT_KEYS", "").split(",")
-        if item.strip()
-    )
+    jira_project_key = os.getenv("JIRA_PROJECT_KEY", "").strip() or None
 
     # non-sensitive values — env overrides yaml, yaml overrides defaults
     yaml_logging = yaml_cfg.get("logging", {})
@@ -197,7 +193,7 @@ def get_settings() -> Settings:
         jira_base_url=jira_base_url,
         jira_email=jira_email,
         jira_api_token=jira_api_token,
-        jira_project_keys=jira_project_keys,
+        jira_project_key=jira_project_key,
         log_dir=Path(log_dir_raw),
         log_level=log_level,
         server_name=server_name,
