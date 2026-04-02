@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "A personal MCP server for work-related agent tools."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "mcp[cli]>=1.18.0",
+]
 
 [project.scripts]
 work-assistant-mcp = "work_assistant_mcp:main"
