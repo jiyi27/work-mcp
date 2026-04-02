@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
 
-from ..config import get_settings
+from ..config import Settings
 from ..logger import configure as configure_logger
 from ..logger import error, info
 
@@ -38,7 +38,7 @@ def _build_signed_webhook_url(webhook_url: str, secret: str | None) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, signed_query, parts.fragment))
 
 
-def register_dingtalk_tools(mcp: FastMCP) -> None:
+def register_dingtalk_tools(mcp: FastMCP, settings: Settings) -> None:
     @mcp.tool()
     def dingtalk_send_markdown(title: str, markdown: str) -> dict[str, Any]:
         """Send a formatted notification to the DingTalk group.
@@ -63,7 +63,6 @@ def register_dingtalk_tools(mcp: FastMCP) -> None:
                 "hint": "`markdown` must not be empty. Fix the parameter and retry.",
             }
 
-        settings = get_settings()
         configure_logger(log_dir=settings.log_dir, level=settings.log_level)
         payload = {
             "msgtype": "markdown",

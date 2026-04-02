@@ -8,7 +8,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .config import Settings, get_settings
 from .logger import configure as configure_logger, info, error
-from .tools import TOOL_REGISTRY
+from .tools import INTEGRATION_REGISTRY
 
 
 def _wrap_with_logging(tool_name: str, fn: Callable) -> Callable:
@@ -56,15 +56,15 @@ def create_mcp(settings: Settings) -> FastMCP:
 
     mcp.tool = tool_with_logging  # type: ignore[method-assign]
 
-    for tool_name in settings.enabled_tools:
-        register_fn = TOOL_REGISTRY.get(tool_name)
+    for integration_name in settings.enabled_integrations:
+        register_fn = INTEGRATION_REGISTRY.get(integration_name)
         if register_fn is None:
-            known = ", ".join(sorted(TOOL_REGISTRY))
+            known = ", ".join(sorted(INTEGRATION_REGISTRY))
             raise RuntimeError(
-                f"Unknown tool '{tool_name}' in config.yaml. "
-                f"Available tools: {known}"
+                f"Unknown integration '{integration_name}' in config.yaml. "
+                f"Available integrations: {known}"
             )
-        register_fn(mcp)
+        register_fn(mcp, settings)
     return mcp
 
 

@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-- `src/work_assistant_mcp/server.py` — MCP server composition root. Create the `FastMCP` instance here, define high-level server instructions, and register tool modules here.
+- `src/work_assistant_mcp/server.py` — MCP server composition root. Create the `FastMCP` instance here, define high-level server instructions, and register integration modules here.
 - `src/work_assistant_mcp/config.py` — runtime configuration loading and validation. Centralize environment access in this module.
 - `src/work_assistant_mcp/tools/` — MCP tool implementations. Each tool or integration should live in a focused module under this package.
 - `src/work_assistant_mcp/__init__.py` — package entry point used by the console script.
@@ -18,9 +18,9 @@
 
 ## Architecture & Design Patterns
 
-- **Single composition root**: Keep server bootstrapping in `server.py`. Tool modules should register themselves; they should not construct separate MCP server instances.
+- **Single composition root**: Keep server bootstrapping in `server.py`. Integration modules should register their tools there; they should not construct separate MCP server instances.
 - **Config at the boundary**: Read environment variables in `config.py`, validate once, and pass typed settings into runtime code. Avoid scattered `os.getenv()` calls across tool modules.
-- **Tool modularity**: Keep each tool or external integration isolated in its own module under `tools/`. Registration should stay simple and explicit.
+- **Integration modularity**: Keep each external integration isolated in its own module under `tools/`. Each integration may expose multiple tools, but registration should stay simple and explicit.
 - **Standard-library first**: This project is intentionally small. Prefer the Python standard library unless an added dependency clearly improves correctness or maintainability.
 - **Actionable failures**: Raise concise `RuntimeError` messages for user-fixable issues such as missing config, invalid arguments, network failures, or upstream API errors.
 - **Deterministic tool contract**: Successful tools should return structured dictionaries with stable keys. Avoid returning free-form text when structured data is possible.
@@ -54,7 +54,7 @@
 ## Change Guidance For LLM Agents
 
 - Prefer small, local edits that preserve the current architecture. Do not introduce frameworks, DI layers, or abstractions the project does not need yet.
-- When adding a new tool, place it under `src/work_assistant_mcp/tools/`, keep its registration explicit in `src/work_assistant_mcp/server.py`, document any required configuration, and add tests for success and failure paths.
+- When adding a new integration or a new tool within an integration, place it under `src/work_assistant_mcp/tools/`, keep its registration explicit in `src/work_assistant_mcp/server.py`, document any required configuration, and add tests for success and failure paths.
 - When changing runtime behavior, update docs in the same change if startup, configuration, or tool usage changes.
 - Do not overwrite unrelated local modifications in this repository. The worktree may already contain user changes.
 

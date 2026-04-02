@@ -18,11 +18,19 @@ def _make_settings(**overrides: object) -> Settings:
     defaults = dict(
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
+        jira_base_url="https://jira.example.invalid",
+        jira_email="user@example.invalid",
+        jira_api_token="jira-token",
+        jira_project_keys=("IOS",),
         log_dir=Path("logs"),
         log_level="info",
         server_name="work-assistant-mcp",
         server_instructions="",
-        enabled_tools=("dingtalk",),
+        enabled_integrations=("dingtalk",),
+        jira_accept_transitions=("已接收", "Accept"),
+        jira_resolve_transitions=("已解决", "Resolved"),
+        jira_attachment_max_images=5,
+        jira_attachment_max_bytes=1_048_576,
     )
     defaults.update(overrides)
     return Settings(**defaults)  # type: ignore[arg-type]
@@ -56,7 +64,7 @@ def test_dingtalk_send_markdown_returns_structured_result() -> None:
             )
         )
 
-    assert structured == {"ok": True, "errcode": 0, "errmsg": "ok"}
+    assert structured == {"success": True}
 
 
 def test_dingtalk_send_markdown_writes_success_log(tmp_path: Path) -> None:
@@ -78,7 +86,7 @@ def test_dingtalk_send_markdown_writes_success_log(tmp_path: Path) -> None:
                 )
             )
 
-    assert structured == {"ok": True, "errcode": 0, "errmsg": "ok"}
+    assert structured == {"success": True}
     files = list(tmp_path.glob("*.info.log"))
     assert len(files) == 1
     record = json.loads(files[0].read_text(encoding="utf-8").splitlines()[0])
@@ -124,7 +132,7 @@ def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> Non
                     )
                 )
 
-    assert structured == {"ok": True, "errcode": 0, "errmsg": "ok"}
+    assert structured == {"success": True}
     assert captured_request is not None
     query = parse_qs(urlsplit(captured_request.full_url).query)
     assert query["access_token"] == ["test-token"]
@@ -132,11 +140,23 @@ def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> Non
     assert query["sign"] == [expected_sign]
 
 
-def test_enabled_tools_controls_which_tools_are_registered() -> None:
-    mcp_empty = create_mcp(_make_settings(enabled_tools=()))
+def test_enabled_integrations_controls_which_tools_are_registered() -> None:
+    mcp_empty = create_mcp(_make_settings(enabled_integrations=()))
     tools = asyncio.run(mcp_empty.list_tools())
     assert tools == []
 
-    mcp_with_dingtalk = create_mcp(_make_settings(enabled_tools=("dingtalk",)))
+    mcp_with_dingtalk = create_mcp(
+        _make_settings(enabled_integrations=("dingtalk",))
+    )
     tools = asyncio.run(mcp_with_dingtalk.list_tools())
     assert [t.name for t in tools] == ["dingtalk_send_markdown"]
+
+
+def test_enabled_integrations_can_register_jira_only() -> None:
+    mcp = create_mcp(_make_settings(enabled_integrations=("jira",)))
+    tools = asyncio.run(mcp.list_tools())
+    assert [tool.name for tool in tools] == [
+        "jira_get_current_fault",
+        "jira_accept_issue",
+        "jira_resolve_issue",
+    ]
