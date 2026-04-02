@@ -3,17 +3,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
 import time
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
 
 from ..config import Settings
+from ..error_messages import format_http_service_error
 from ..hints import DINGTALK_INTERNAL_ERROR_HINT, required_param_hint
+from ..http import HttpRequestError, request_json
 from ..logger import configure as configure_logger
 from ..logger import error, info
 
@@ -72,44 +71,43 @@ def register_dingtalk_tools(mcp: FastMCP, settings: Settings) -> None:
                 "text": markdown,
             },
         }
-        body = json.dumps(payload).encode("utf-8")
         webhook_url = _build_signed_webhook_url(
             settings.dingtalk_webhook_url,
             settings.dingtalk_secret,
         )
-        request = Request(
-            webhook_url,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
 
         try:
-            with urlopen(request, timeout=10) as response:
-                response_body = response.read().decode("utf-8")
-        except HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")
-            error(
-                "dingtalk.request_failed",
-                {"status_code": exc.code, "response_body": error_body},
-                exc=exc,
+            result = request_json(
+                method="POST",
+                url=webhook_url,
+                headers={"Content-Type": "application/json"},
+                payload=payload,
+                timeout=10,
+                service_name="DingTalk",
             )
+        except HttpRequestError as exc:
+            topic = "dingtalk.request_failed" if exc.status_code is not None else "dingtalk.network_failed"
+            error(topic, {}, exc=exc)
             return {
                 "success": False,
                 "error_type": "internal_error",
-                "message": f"DingTalk webhook request failed with HTTP {exc.code}: {error_body}",
-                "hint": DINGTALK_INTERNAL_ERROR_HINT,
-            }
-        except URLError as exc:
-            error("dingtalk.network_failed", {"reason": str(exc.reason)}, exc=exc)
-            return {
-                "success": False,
-                "error_type": "internal_error",
-                "message": f"Failed to reach DingTalk webhook: {exc.reason}",
+                "message": format_http_service_error(
+                    service_name="DingTalk",
+                    operation="sending the webhook message",
+                    status_code=exc.status_code,
+                ),
                 "hint": DINGTALK_INTERNAL_ERROR_HINT,
             }
 
-        result = json.loads(response_body)
+        if not isinstance(result, dict):
+            error("dingtalk.invalid_response", {"response_type": type(result).__name__})
+            return {
+                "success": False,
+                "error_type": "internal_error",
+                "message": "DingTalk API encountered an unknown error while sending the webhook message.",
+                "hint": DINGTALK_INTERNAL_ERROR_HINT,
+            }
+
         if result.get("errcode") != 0:
             error(
                 "dingtalk.upstream_error",

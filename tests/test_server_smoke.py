@@ -37,14 +37,7 @@ def _make_settings(**overrides: object) -> Settings:
 
 
 class FakeResponse:
-    def __enter__(self) -> "FakeResponse":
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        return False
-
-    def read(self) -> bytes:
-        return b'{"errcode":0,"errmsg":"ok"}'
+    pass
 
 
 def test_list_tools_includes_dingtalk_send_markdown() -> None:
@@ -56,7 +49,10 @@ def test_list_tools_includes_dingtalk_send_markdown() -> None:
 
 def test_dingtalk_send_markdown_returns_structured_result() -> None:
     mcp = create_mcp(_make_settings())
-    with patch("work_assistant_mcp.tools.dingtalk.urlopen", return_value=FakeResponse()):
+    with patch(
+        "work_assistant_mcp.tools.dingtalk.request_json",
+        return_value={"errcode": 0, "errmsg": "ok"},
+    ):
         _, structured = asyncio.run(
             mcp.call_tool(
                 "dingtalk_send_markdown",
@@ -69,7 +65,10 @@ def test_dingtalk_send_markdown_returns_structured_result() -> None:
 
 def test_dingtalk_send_markdown_writes_success_log(tmp_path: Path) -> None:
     mcp = create_mcp(_make_settings(log_dir=tmp_path))
-    with patch("work_assistant_mcp.tools.dingtalk.urlopen", return_value=FakeResponse()):
+    with patch(
+        "work_assistant_mcp.tools.dingtalk.request_json",
+        return_value={"errcode": 0, "errmsg": "ok"},
+    ):
         with patch.dict(
             "os.environ",
             {
@@ -94,12 +93,12 @@ def test_dingtalk_send_markdown_writes_success_log(tmp_path: Path) -> None:
 
 
 def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> None:
-    captured_request = None
+    captured_kwargs: dict[str, object] | None = None
 
-    def fake_urlopen(request: object, timeout: int) -> FakeResponse:
-        nonlocal captured_request
-        captured_request = request
-        return FakeResponse()
+    def fake_request_json(**kwargs: object) -> dict[str, object]:
+        nonlocal captured_kwargs
+        captured_kwargs = kwargs
+        return {"errcode": 0, "errmsg": "ok"}
 
     fixed_timestamp_ms = 1_712_345_678_900
     secret = "SECtest-secret"
@@ -115,7 +114,7 @@ def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> Non
         )
     )
 
-    with patch("work_assistant_mcp.tools.dingtalk.urlopen", side_effect=fake_urlopen):
+    with patch("work_assistant_mcp.tools.dingtalk.request_json", side_effect=fake_request_json):
         with patch("work_assistant_mcp.tools.dingtalk.time.time", return_value=fixed_timestamp_ms / 1000):
             with patch.dict(
                 "os.environ",
@@ -133,11 +132,37 @@ def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> Non
                 )
 
     assert structured == {"success": True}
-    assert captured_request is not None
-    query = parse_qs(urlsplit(captured_request.full_url).query)
+    assert captured_kwargs is not None
+    query = parse_qs(urlsplit(str(captured_kwargs["url"])).query)
     assert query["access_token"] == ["test-token"]
     assert query["timestamp"] == [str(fixed_timestamp_ms)]
     assert query["sign"] == [expected_sign]
+
+
+def test_dingtalk_send_markdown_returns_clean_message_for_http_failure() -> None:
+    from work_assistant_mcp.http import HttpRequestError
+
+    mcp = create_mcp(_make_settings())
+    with patch(
+        "work_assistant_mcp.tools.dingtalk.request_json",
+        side_effect=HttpRequestError(
+            "DingTalk request failed with HTTP 500: unknown upstream error",
+            status_code=500,
+        ),
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool(
+                "dingtalk_send_markdown",
+                {"title": "Smoke Test", "markdown": "hello"},
+            )
+        )
+
+    assert structured == {
+        "success": False,
+        "error_type": "internal_error",
+        "message": "DingTalk API returned HTTP 500 while sending the webhook message.",
+        "hint": "An internal error occurred. Stop and tell the user in your reply: the notification could not be sent.",
+    }
 
 
 def test_enabled_integrations_controls_which_tools_are_registered() -> None:

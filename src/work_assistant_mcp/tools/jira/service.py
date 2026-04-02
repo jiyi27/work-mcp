@@ -4,6 +4,7 @@ import base64
 from typing import Any
 
 from ...config import Settings
+from ...error_messages import format_http_service_error
 from ...hints import (
     INTERNAL_ERROR_RETRY_HINT,
     jira_accept_invalid_status_hint,
@@ -386,13 +387,9 @@ class JiraService:
 
     @staticmethod
     def _api_error_message(operation: str, exc: JiraApiError) -> str:
-        if exc.status_code == 401:
-            return (
-                f"Jira authentication failed while {operation} (HTTP 401). "
-                "Check JIRA_BASE_URL, JIRA_EMAIL, and JIRA_API_TOKEN."
-            )
-        if exc.status_code == 403:
-            return f"Jira denied permission while {operation} (HTTP 403)."
-        if exc.status_code is not None:
-            return f"Jira API returned HTTP {exc.status_code} while {operation}."
-        return f"Jira API encountered an unknown error while {operation}."
+        return format_http_service_error(
+            service_name="Jira",
+            operation=operation,
+            status_code=exc.status_code,
+            auth_env_names=("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"),
+        )
