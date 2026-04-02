@@ -13,7 +13,11 @@ from ..config import get_settings
 def register_dingtalk_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def dingtalk_send_markdown(title: str, markdown: str) -> dict[str, Any]:
-        """Send a markdown message to the configured DingTalk robot webhook."""
+        """Send a formatted notification to the DingTalk group.
+
+        Use this to report task progress, completion, errors, or any update
+        that the user or team should be aware of.
+        """
         title = title.strip()
         markdown = markdown.strip()
         if not title:

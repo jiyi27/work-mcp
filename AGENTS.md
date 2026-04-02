@@ -25,6 +25,7 @@
 - **Actionable failures**: Raise concise `RuntimeError` messages for user-fixable issues such as missing config, invalid arguments, network failures, or upstream API errors.
 - **Deterministic tool contract**: Successful tools should return structured dictionaries with stable keys. Avoid returning free-form text when structured data is possible.
 - **Scale by addition, not abstraction**: This repository will grow by adding more tools. Prefer extending the existing pattern with small modules rather than introducing framework-heavy layers early.
+- **MCP tool design**: Follow the naming, description, and parameter conventions in [docs/mcp-tool-design.md](docs/mcp-tool-design.md).
 
 ## Coding Style
 
