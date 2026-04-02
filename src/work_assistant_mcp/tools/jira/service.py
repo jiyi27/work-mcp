@@ -3,17 +3,17 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from ..config import Settings
-from ..hints import (
+from ...config import Settings
+from ...hints import (
     INTERNAL_ERROR_RETRY_HINT,
     jira_accept_invalid_status_hint,
     jira_issue_not_found_hint,
     jira_resolve_invalid_status_hint,
     required_param_hint,
 )
-from ..logger import error, info, warning
-from .jira_client import JiraApiError, JiraClient
-from .jira_models import JiraIssue
+from ...logger import error, info, warning
+from .client import JiraApiError, JiraClient
+from .models import JiraIssue
 
 
 JIRA_ISSUE_FIELDS = (

@@ -54,10 +54,10 @@ def test_jira_get_current_fault_returns_issue_with_base64_attachment() -> None:
     ]
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira_client.JiraClient.search_issues",
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
     ), patch(
-        "work_assistant_mcp.tools.jira_client.JiraClient.download_attachment",
+        "work_assistant_mcp.tools.jira.client.JiraClient.download_attachment",
         return_value=b"png-bytes",
     ):
         _, structured = asyncio.run(mcp.call_tool("jira_get_current_fault", {}))
@@ -98,7 +98,7 @@ def test_jira_accept_issue_rejects_non_todo_status() -> None:
     ]
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira_client.JiraClient.search_issues",
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
     ):
         _, structured = asyncio.run(
@@ -110,7 +110,8 @@ def test_jira_accept_issue_rejects_non_todo_status() -> None:
         "error_type": "invalid_status",
         "hint": (
             "IOS-123 is not in a Todo state and cannot be accepted. "
-            "If it is already accepted, call jira_resolve_issue instead."
+            "If it is already in an Accepted state, use the resolve tool instead. "
+            "If still failing, stop and notify the user."
         ),
     }
 
@@ -131,13 +132,13 @@ def test_jira_resolve_issue_transitions_successfully() -> None:
     ]
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira_client.JiraClient.search_issues",
+        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
     ), patch(
-        "work_assistant_mcp.tools.jira_client.JiraClient.get_transitions",
+        "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
         return_value=[{"id": "31", "name": "已解决"}],
     ), patch(
-        "work_assistant_mcp.tools.jira_client.JiraClient.transition_issue",
+        "work_assistant_mcp.tools.jira.client.JiraClient.transition_issue",
         return_value=None,
     ) as transition_mock:
         _, structured = asyncio.run(

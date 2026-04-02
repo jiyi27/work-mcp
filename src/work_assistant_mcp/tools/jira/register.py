@@ -4,8 +4,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ..config import Settings
-from .jira_service import JiraService
+from ...config import Settings
+from .service import JiraService
 
 
 def register_jira_tools(mcp: FastMCP, settings: Settings) -> None:

@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from ..config import Settings
+from ...config import Settings
 
 
 JIRA_TIMEOUT_SECONDS = 30
