@@ -50,10 +50,18 @@ def register_dingtalk_tools(mcp: FastMCP) -> None:
         markdown = markdown.strip()
         if not title:
             error("dingtalk.validation_failed", {"field": "title"})
-            raise RuntimeError("`title` must not be empty.")
+            return {
+                "success": False,
+                "error_type": "invalid_input",
+                "hint": "`title` must not be empty. Fix the parameter and retry.",
+            }
         if not markdown:
             error("dingtalk.validation_failed", {"field": "markdown"})
-            raise RuntimeError("`markdown` must not be empty.")
+            return {
+                "success": False,
+                "error_type": "invalid_input",
+                "hint": "`markdown` must not be empty. Fix the parameter and retry.",
+            }
 
         settings = get_settings()
         configure_logger(log_dir=settings.log_dir, level=settings.log_level)
@@ -86,12 +94,20 @@ def register_dingtalk_tools(mcp: FastMCP) -> None:
                 {"status_code": exc.code, "response_body": error_body},
                 exc=exc,
             )
-            raise RuntimeError(
-                f"DingTalk webhook request failed with HTTP {exc.code}: {error_body}"
-            ) from exc
+            return {
+                "success": False,
+                "error_type": "internal_error",
+                "message": f"DingTalk webhook request failed with HTTP {exc.code}: {error_body}",
+                "hint": "An internal error occurred. Stop and tell the user in your reply: the notification could not be sent.",
+            }
         except URLError as exc:
             error("dingtalk.network_failed", {"reason": str(exc.reason)}, exc=exc)
-            raise RuntimeError(f"Failed to reach DingTalk webhook: {exc.reason}") from exc
+            return {
+                "success": False,
+                "error_type": "internal_error",
+                "message": f"Failed to reach DingTalk webhook: {exc.reason}",
+                "hint": "An internal error occurred. Stop and tell the user in your reply: the notification could not be sent.",
+            }
 
         result = json.loads(response_body)
         if result.get("errcode") != 0:
@@ -102,21 +118,12 @@ def register_dingtalk_tools(mcp: FastMCP) -> None:
                     "errmsg": result.get("errmsg", ""),
                 },
             )
-            raise RuntimeError(
-                "DingTalk webhook returned an error: "
-                f"{result.get('errcode')} {result.get('errmsg', '')}"
-            )
+            return {
+                "success": False,
+                "error_type": "internal_error",
+                "message": f"DingTalk returned error {result.get('errcode')}: {result.get('errmsg', '')}",
+                "hint": "An internal error occurred. Stop and tell the user in your reply: the notification could not be sent.",
+            }
 
-        info(
-            "dingtalk.sent",
-            {
-                "title": title,
-                "errcode": result.get("errcode"),
-                "errmsg": result.get("errmsg"),
-            },
-        )
-        return {
-            "ok": True,
-            "errcode": result.get("errcode"),
-            "errmsg": result.get("errmsg"),
-        }
+        info("dingtalk.sent", {"title": title})
+        return {"success": True}
