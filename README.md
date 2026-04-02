@@ -2,27 +2,12 @@
 
 An MCP server for work-related tools used by local agents.
 
-Current tools:
+Tools are grouped by integration. Each integration is enabled or disabled as a unit in `config.yaml`.
 
-- `dingtalk_send_markdown`
-- `jira_get_current_fault`
-- `jira_accept_issue`
-- `jira_resolve_issue`
-
-## What This Server Is For
-
-Use this server when a local agent needs to send work updates into a DingTalk group, for example:
-
-- task progress updates
-- completion notifications
-- error reports
-- manual smoke-test messages
-
-Use this server when a local agent needs to interact with Jira fault issues, for example:
-
-- fetching the latest open fault assigned to the current user
-- accepting a fault when work starts
-- resolving a fault when the fix is ready for verification
+| Integration | Tools                                                               |
+| ----------- | ------------------------------------------------------------------- |
+| `dingtalk`  | `dingtalk_send_markdown`                                            |
+| `jira`      | `jira_get_current_fault`, `jira_accept_issue`, `jira_resolve_issue` |
 
 ## Configuration
 
@@ -59,7 +44,7 @@ jira:
     max_bytes_per_image: 1048576
 ```
 
-To disable an integration without removing it from the codebase, comment out its name in `integrations.enabled`.
+To disable an integration (and all its tools) without removing it from the codebase, comment out its name in `integrations.enabled`.
 When `jira` is enabled, `jira.accept_transitions` and `jira.resolve_transitions` must be configured explicitly.
 
 ### `.env` — sensitive credentials
@@ -118,16 +103,6 @@ Point your MCP client or agent at the packaged entry point:
 ```
 
 If your MCP client starts servers from the current repository root, `cwd` can usually be omitted.
-
-Agent guidance:
-
-- Use `dingtalk_send_markdown` when the user or team should be notified in DingTalk.
-- Set `title` to a short subject line.
-- Set `markdown` to the full message body.
-- Do not send routine chatter unless the user asked for a notification or the workflow clearly requires one.
-- Call `jira_get_current_fault` to retrieve the latest open fault assigned to the current user, including image attachments encoded as base64 when available.
-- Call `jira_accept_issue` once the issue is understood and work is starting.
-- Call `jira_resolve_issue` once the fix is complete and ready for verification.
 
 ## Run
 
