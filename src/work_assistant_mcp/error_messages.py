@@ -6,6 +6,7 @@ def format_http_service_error(
     service_name: str,
     operation: str,
     status_code: int | None,
+    error_message: str | None = None,
     auth_env_names: tuple[str, ...] = (),
 ) -> str:
     if status_code == 401:
@@ -16,6 +17,10 @@ def format_http_service_error(
         return message
     if status_code == 403:
         return f"{service_name} denied permission while {operation} (HTTP 403)."
+    
+    if error_message:
+        return f"Error while {operation}: {error_message}"
+        
     if status_code is not None:
         return f"{service_name} API returned HTTP {status_code} while {operation}."
     return f"{service_name} API encountered an unknown error while {operation}."

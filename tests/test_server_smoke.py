@@ -160,7 +160,7 @@ def test_dingtalk_send_markdown_returns_clean_message_for_http_failure() -> None
     assert structured == {
         "success": False,
         "error_type": "internal_error",
-        "message": "DingTalk API returned HTTP 500 while sending the webhook message.",
+        "message": "Error while sending the webhook message: DingTalk request failed with HTTP 500: unknown upstream error",
         "hint": "An internal error occurred. Stop and tell the user in your reply: the notification could not be sent.",
     }
 

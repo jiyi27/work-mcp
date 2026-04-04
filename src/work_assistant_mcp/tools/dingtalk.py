@@ -95,6 +95,7 @@ def register_dingtalk_tools(mcp: FastMCP, settings: Settings) -> None:
                     service_name="DingTalk",
                     operation="sending the webhook message",
                     status_code=exc.status_code,
+                    error_message=exc.message,
                 ),
                 "hint": DINGTALK_INTERNAL_ERROR_HINT,
             }

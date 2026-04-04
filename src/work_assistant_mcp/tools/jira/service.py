@@ -7,8 +7,8 @@ from ...config import Settings
 from ...error_messages import format_http_service_error
 from ...hints import (
     INTERNAL_ERROR_RETRY_HINT,
-    jira_investigate_issue_hint,
-    jira_transition_failure_hint,
+    JIRA_INVESTIGATE_ISSUE_HINT,
+    JIRA_TRANSITION_FAILURE_HINT,
     jira_assignee_not_allowed_hint,
     jira_attachment_not_found_hint,
     jira_issue_not_found_hint,
@@ -65,7 +65,7 @@ class JiraService:
                 "issue_type": issue.issue_type,
             },
             "attachments": attachments,
-            "hint": jira_investigate_issue_hint(self._settings),
+            "hint": JIRA_INVESTIGATE_ISSUE_HINT,
         }
 
     def get_attachment_image(self, issue_key: str, attachment_id: str) -> dict[str, Any]:
@@ -95,7 +95,7 @@ class JiraService:
             return {
                 "success": False,
                 "error_type": "issue_not_found",
-                "hint": jira_issue_not_found_hint(self._settings, issue_key),
+                "hint": jira_issue_not_found_hint(issue_key),
             }
 
         if not self._is_allowed_project(issue.key):
@@ -103,7 +103,7 @@ class JiraService:
             return {
                 "success": False,
                 "error_type": "project_not_allowed",
-                "hint": jira_project_not_allowed_hint(self._settings, issue.key),
+                "hint": jira_project_not_allowed_hint(issue.key),
             }
 
         try:
@@ -117,7 +117,7 @@ class JiraService:
             return {
                 "success": False,
                 "error_type": "assignee_not_allowed",
-                "hint": jira_assignee_not_allowed_hint(self._settings, issue.key),
+                "hint": jira_assignee_not_allowed_hint(issue.key),
             }
 
         attachment = self._find_image_attachment(issue, attachment_id)
@@ -130,7 +130,7 @@ class JiraService:
                 "success": False,
                 "error_type": "attachment_not_found",
                 "hint": jira_attachment_not_found_hint(
-                    self._settings, issue.key, attachment_id
+                    issue.key, attachment_id
                 ),
             }
 
@@ -216,7 +216,7 @@ class JiraService:
             return {
                 "success": False,
                 "error_type": "issue_not_found",
-                "hint": jira_issue_not_found_hint(self._settings, issue_key),
+                "hint": jira_issue_not_found_hint(issue_key),
             }
 
         if not self._is_allowed_project(issue.key):
@@ -224,7 +224,7 @@ class JiraService:
             return {
                 "success": False,
                 "error_type": "project_not_allowed",
-                "hint": jira_project_not_allowed_hint(self._settings, issue.key),
+                "hint": jira_project_not_allowed_hint(issue.key),
             }
 
         try:
@@ -238,7 +238,7 @@ class JiraService:
             return {
                 "success": False,
                 "error_type": "assignee_not_allowed",
-                "hint": jira_assignee_not_allowed_hint(self._settings, issue.key),
+                "hint": jira_assignee_not_allowed_hint(issue.key),
             }
 
         try:
@@ -266,7 +266,7 @@ class JiraService:
                 "current_status": issue.status,
                 "target_status": target_status,
                 "available_statuses": available_statuses,
-                "hint": jira_transition_failure_hint(self._settings),
+                "hint": JIRA_TRANSITION_FAILURE_HINT,
             }
         if isinstance(selected, list):
             matching_transition_names = [
@@ -290,7 +290,7 @@ class JiraService:
                 "target_status": target_status,
                 "available_statuses": available_statuses,
                 "matching_transition_names": matching_transition_names,
-                "hint": jira_transition_failure_hint(self._settings),
+                "hint": JIRA_TRANSITION_FAILURE_HINT,
             }
 
         transition_id = str(selected.get("id") or "")
@@ -446,5 +446,6 @@ class JiraService:
             service_name="Jira",
             operation=operation,
             status_code=exc.status_code,
+            error_message=exc.message,
             auth_env_names=("JIRA_BASE_URL", "JIRA_API_TOKEN"),
         )

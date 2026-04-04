@@ -307,7 +307,7 @@ def test_jira_get_latest_assigned_issue_returns_generic_message_for_non_auth_htt
     assert structured == {
         "success": False,
         "error_type": "internal_error",
-        "message": "Jira API returned HTTP 500 while fetching the latest assigned issue.",
+        "message": "Error while fetching the latest assigned issue: Jira request failed with HTTP 500: internal server error",
         "hint": (
             "An internal error occurred. Retry up to 2 times; "
             "if still failing, stop and notify the user with the message above."
@@ -510,40 +510,6 @@ def test_jira_start_issue_rejects_write_outside_configured_project() -> None:
         ),
     }
 
-
-def test_jira_hints_use_dingtalk_notification_when_enabled() -> None:
-    issue_payload = {
-        "key": "IOS-123",
-        "fields": {
-            "summary": "Crash on launch",
-            "description": "Steps to reproduce",
-            "status": {"name": "In Progress"},
-            "priority": {"name": "High"},
-            "issuetype": {"name": "故障"},
-            "assignee": {"emailAddress": "user@example.invalid"},
-            "updated": "2026-04-02T10:00:00.000+0800",
-        },
-    }
-    mcp = create_mcp(_make_settings(enabled_integrations=("jira", "dingtalk")))
-    with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
-        return_value=issue_payload,
-    ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
-        return_value=frozenset({"user@example.invalid"}),
-    ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
-        return_value=[],
-    ):
-        _, structured = asyncio.run(
-            mcp.call_tool("jira_start_issue", {"issue_key": "IOS-123"})
-        )
-
-    assert structured["hint"] == (
-        "The Jira workflow change could not be completed. Stop execution, summarize what you completed, "
-        "and use dingtalk_send_markdown to notify the user with the current status, target status, "
-        "and available target statuses."
-    )
 
 
 def test_jira_start_issue_rejects_issue_not_assigned_to_current_user() -> None:
