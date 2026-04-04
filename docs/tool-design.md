@@ -93,7 +93,7 @@ A known but non-recoverable integration failure inside the tool (e.g. downstream
 
 **Rules for internal errors:**
 - Never expose raw internal state unless that state is the direct reason the tool could not complete a configured action and the model must stop and notify the user.
-- The `message` is for the human to read, not for the model to act on.
+- The `message` provides critical context for both the agent and the human. Preserve detailed upstream error reasons (e.g., timeout descriptions, HTTP error body summaries) in this field. Do not swallow them with generic wrappers like "HTTP 500 error", which prevent diagnosis.
 - Use this shape for expected boundary failures that the tool explicitly handles.
 - The `hint` may include a bounded retry policy when the failure is plausibly transient.
 
