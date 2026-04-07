@@ -47,7 +47,8 @@ def create_mcp(settings: Settings) -> FastMCP:
     )
     original_tool = mcp.tool
 
-    def tool_with_logging(*deco_args: Any, **deco_kwargs: Any):
+    # Replaces mcp.tool with a version that wraps each registered function with logging.
+    def mcp_tool_with_logging(*deco_args: Any, **deco_kwargs: Any):
         decorator = original_tool(*deco_args, **deco_kwargs)
 
         def wrapper(fn: Callable) -> Callable:
@@ -56,7 +57,9 @@ def create_mcp(settings: Settings) -> FastMCP:
 
         return wrapper
 
-    mcp.tool = tool_with_logging  # type: ignore[method-assign]
+    # Monkey-patch: replace the original mcp.tool function with our wrapped version.
+    # From this point on, every @mcp.tool(...) call goes through mcp_tool_with_logging instead.
+    mcp.tool = mcp_tool_with_logging
 
     for integration_name in settings.enabled_integrations:
         register_fn = INTEGRATION_REGISTRY.get(integration_name)
