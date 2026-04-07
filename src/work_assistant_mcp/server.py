@@ -11,6 +11,8 @@ from .logger import configure as configure_logger, info, error
 from .tools import INTEGRATION_REGISTRY
 
 
+# AOP-style cross-cutting concern: intercept every tool call to inject structured logging.
+# In Python, this is the Decorator pattern — wrapping a function to extend its behavior without modifying it.
 def _wrap_with_logging(tool_name: str, fn: Callable) -> Callable:
     @functools.wraps(fn)
     async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
