@@ -41,9 +41,15 @@ def _wrap_with_logging(tool_name: str, fn: Callable) -> Callable:
 
 def create_mcp(settings: Settings) -> FastMCP:
     """Build and return a configured FastMCP instance with the enabled tools registered."""
+    http_kwargs: dict[str, Any] = (
+        {"host": settings.server.host, "port": settings.server.port}
+        if settings.server.transport == "streamable-http"
+        else {}
+    )
     mcp = FastMCP(
         name=settings.server_name,
         instructions=settings.server_instructions,
+        **http_kwargs,
     )
     original_tool = mcp.tool
 
@@ -78,4 +84,8 @@ def main() -> None:
     settings = get_settings()
     configure_logger(log_dir=settings.log_dir, level=settings.log_level)
     mcp = create_mcp(settings)
-    mcp.run()
+    transport = settings.server.transport
+    if transport == "streamable-http":
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()

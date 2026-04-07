@@ -12,11 +12,29 @@ ENV_FILE_NAME = ".env"
 YAML_CONFIG_FILE = "config.yaml"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOG_LEVELS = frozenset({"debug", "info", "warning", "error"})
-KNOWN_PLUGINS = frozenset({"dingtalk", "jira"})
+KNOWN_PLUGINS = frozenset({"dingtalk", "jira", "log_search"})
+ALLOWED_TRANSPORTS = frozenset({"stdio", "streamable-http"})
+
+
+@dataclass(frozen=True)
+class ServerSettings:
+    transport: str
+    host: str | None
+    port: int | None
+
+
+@dataclass(frozen=True)
+class LogSearchSettings:
+    log_base_dir: str
+    file_pattern: str
+    levels: tuple[str, ...]
+    services: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class Settings:
+    # server transport
+    server: ServerSettings
     # sensitive — loaded from .env / environment
     dingtalk_webhook_url: str
     dingtalk_secret: str | None
@@ -34,6 +52,7 @@ class Settings:
     jira_resolve_target_status: str
     jira_attachment_max_images: int
     jira_attachment_max_bytes: int
+    log_search: LogSearchSettings | None
 
 
 def load_env_file(env_path: Path | None = None) -> None:
@@ -69,6 +88,31 @@ def load_yaml_config(yaml_path: Path | None = None) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def _read_server_settings(yaml_cfg: dict[str, Any]) -> ServerSettings:
+    yaml_server = yaml_cfg.get("server", {})
+    if not isinstance(yaml_server, dict):
+        raise RuntimeError("Invalid server section in config.yaml. Expected a mapping.")
+
+    transport = str(yaml_server.get("transport", "")).strip()
+    if not transport:
+        allowed = ", ".join(sorted(ALLOWED_TRANSPORTS))
+        raise RuntimeError(
+            f"server.transport is required in config.yaml. Allowed values: {allowed}"
+        )
+    if transport not in ALLOWED_TRANSPORTS:
+        allowed = ", ".join(sorted(ALLOWED_TRANSPORTS))
+        raise RuntimeError(
+            f"Invalid server.transport '{transport}' in config.yaml. Allowed values: {allowed}"
+        )
+
+    host_raw = yaml_server.get("host")
+    port_raw = yaml_server.get("port")
+    host = str(host_raw).strip() if host_raw is not None else None
+    port = int(port_raw) if port_raw is not None else None
+
+    return ServerSettings(transport=transport, host=host, port=port)
+
+
 def _read_enabled_plugins(yaml_cfg: dict[str, Any]) -> tuple[str, ...]:
     yaml_plugins = yaml_cfg.get("plugins", {})
     if not isinstance(yaml_plugins, dict):
@@ -94,8 +138,47 @@ def _read_string_list(section: dict[str, Any], key: str) -> tuple[str, ...]:
     return tuple(str(item).strip() for item in raw_value if str(item).strip())
 
 
+def _read_log_search_settings(yaml_cfg: dict[str, Any]) -> LogSearchSettings | None:
+    yaml_plugins = yaml_cfg.get("plugins", {})
+    if not isinstance(yaml_plugins, dict):
+        return None
+    yaml_log_search = yaml_plugins.get("log_search")
+    if not yaml_log_search:
+        return None
+    if not isinstance(yaml_log_search, dict):
+        raise RuntimeError(
+            "Invalid plugins.log_search in config.yaml. Expected a mapping."
+        )
+
+    log_base_dir = str(yaml_log_search.get("log_base_dir", "")).strip()
+    file_pattern = str(yaml_log_search.get("file_pattern", "")).strip()
+    levels = tuple(
+        str(l).strip() for l in yaml_log_search.get("levels", []) if str(l).strip()
+    )
+    services = tuple(
+        str(s).strip() for s in yaml_log_search.get("services", []) if str(s).strip()
+    )
+    return LogSearchSettings(
+        log_base_dir=log_base_dir,
+        file_pattern=file_pattern,
+        levels=levels,
+        services=services,
+    )
+
+
 def validate_settings(settings: Settings) -> None:
     errors: list[str] = []
+
+    # server transport validation
+    if settings.server.transport == "streamable-http":
+        if not settings.server.host:
+            errors.append(
+                "server: host is required when transport is streamable-http"
+            )
+        if settings.server.port is None:
+            errors.append(
+                "server: port is required when transport is streamable-http"
+            )
 
     if "dingtalk" in settings.enabled_plugins and not settings.dingtalk_webhook_url:
         errors.append(
@@ -128,6 +211,33 @@ def validate_settings(settings: Settings) -> None:
                 "jira: jira.attachments.max_bytes_per_image must be greater than 0"
             )
 
+    if "log_search" in settings.enabled_plugins:
+        if settings.log_search is None:
+            errors.append(
+                "log_search: missing plugins.log_search section in config.yaml"
+            )
+        else:
+            if not settings.log_search.log_base_dir:
+                errors.append(
+                    "log_search: missing plugins.log_search.log_base_dir in config.yaml"
+                )
+            if not settings.log_search.file_pattern:
+                errors.append(
+                    "log_search: missing plugins.log_search.file_pattern in config.yaml"
+                )
+            if not settings.log_search.services:
+                errors.append(
+                    "log_search: missing or empty plugins.log_search.services in config.yaml"
+                )
+            if (
+                settings.log_search.file_pattern
+                and "{level}" in settings.log_search.file_pattern
+                and not settings.log_search.levels
+            ):
+                errors.append(
+                    "log_search: file_pattern contains {level} but plugins.log_search.levels is empty in config.yaml"
+                )
+
     if errors:
         lines = "\n".join(f"- {item}" for item in errors)
         raise RuntimeError(f"Invalid configuration for enabled plugins:\n{lines}")
@@ -136,7 +246,10 @@ def validate_settings(settings: Settings) -> None:
 def get_settings() -> Settings:
     load_env_file()
     yaml_cfg = load_yaml_config()
+
+    server = _read_server_settings(yaml_cfg)
     enabled_plugins = _read_enabled_plugins(yaml_cfg)
+    log_search = _read_log_search_settings(yaml_cfg)
 
     # sensitive values — only from environment
     webhook_url = os.getenv("DINGTALK_WEBHOOK_URL", "").strip()
@@ -188,6 +301,7 @@ def get_settings() -> Settings:
     )
 
     settings = Settings(
+        server=server,
         dingtalk_webhook_url=webhook_url,
         dingtalk_secret=dingtalk_secret,
         jira_base_url=jira_base_url,
@@ -203,6 +317,7 @@ def get_settings() -> Settings:
         jira_resolve_target_status=jira_resolve_target_status,
         jira_attachment_max_images=jira_attachment_max_images,
         jira_attachment_max_bytes=jira_attachment_max_bytes,
+        log_search=log_search,
     )
     validate_settings(settings)
     return settings

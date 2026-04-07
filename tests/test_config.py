@@ -11,6 +11,8 @@ def test_get_settings_allows_jira_without_dingtalk(monkeypatch: pytest.MonkeyPat
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(
 """
+server:
+  transport: stdio
 plugins:
   enabled:
     - jira
@@ -55,6 +57,8 @@ def test_get_settings_requires_jira_credentials_when_jira_enabled(
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(
 """
+server:
+  transport: stdio
 plugins:
   enabled:
     - jira
@@ -83,6 +87,8 @@ def test_get_settings_requires_plugins_section_to_be_a_mapping(
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(
         """
+server:
+  transport: stdio
 plugins:
   - jira
 jira:
@@ -106,6 +112,8 @@ def test_get_settings_requires_latest_assigned_statuses_when_jira_enabled(
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(
         """
+server:
+  transport: stdio
 plugins:
   enabled:
     - jira

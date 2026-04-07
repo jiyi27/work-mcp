@@ -10,12 +10,15 @@ from unittest.mock import patch
 
 from urllib.parse import parse_qs, urlsplit
 
-from work_assistant_mcp.config import Settings
+from work_assistant_mcp.config import ServerSettings, Settings
 from work_assistant_mcp.server import create_mcp
+
+_DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
 
 def _make_settings(**overrides: object) -> Settings:
     defaults = dict(
+        server=_DEFAULT_SERVER,
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
         jira_base_url="https://jira.example.invalid",
@@ -31,6 +34,7 @@ def _make_settings(**overrides: object) -> Settings:
         jira_resolve_target_status="已解决",
         jira_attachment_max_images=5,
         jira_attachment_max_bytes=1_048_576,
+        log_search=None,
     )
     defaults.update(overrides)
     return Settings(**defaults)  # type: ignore[arg-type]

@@ -1,4 +1,5 @@
 server:
+  transport: stdio
   name: work-assistant-mcp
   instructions: "A work-focused MCP server with notification tools for local agents."
 

@@ -6,13 +6,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from work_assistant_mcp import logger
-from work_assistant_mcp.config import Settings
+from work_assistant_mcp.config import ServerSettings, Settings
 from work_assistant_mcp.server import create_mcp
 from work_assistant_mcp.tools.jira.client import JiraApiError
+
+_DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
 
 def _make_settings(**overrides: object) -> Settings:
     defaults = dict(
+        server=_DEFAULT_SERVER,
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
         jira_base_url="https://jira.example.invalid",
@@ -28,6 +31,7 @@ def _make_settings(**overrides: object) -> Settings:
         jira_resolve_target_status="已解决",
         jira_attachment_max_images=5,
         jira_attachment_max_bytes=1024,
+        log_search=None,
     )
     defaults.update(overrides)
     return Settings(**defaults)  # type: ignore[arg-type]
@@ -91,7 +95,8 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata()
         ],
         "hint": (
             "If you cannot determine the root cause or the issue appears to already be resolved, "
-            "stop processing, summarize your findings, and tell the user in your reply."
+            "stop processing, summarize your findings, tell the user in your reply, "
+            "and ask the user how you should proceed."
         ),
     }
 
@@ -263,7 +268,8 @@ def test_jira_get_attachment_image_rejects_unknown_attachment() -> None:
         "error_type": "attachment_not_found",
         "hint": (
             "Attachment 10 was not found on IOS-123, or it is not a supported image attachment. "
-            "Do not guess another attachment id. Stop and tell the user in your reply."
+            "Do not guess another attachment id. "
+            "Stop, tell the user in your reply, and ask the user how you should proceed."
         ),
     }
 
@@ -355,7 +361,8 @@ def test_jira_start_issue_returns_transition_not_available_with_current_context(
         "available_statuses": ["已解决", "Closed"],
         "hint": (
             "The Jira workflow change could not be completed. Stop execution, summarize what you completed, "
-            "and tell the user in your reply with the current status, target status, and available target statuses."
+            "tell the user in your reply with the current status, target status, and available target statuses, "
+            "and ask the user how you should proceed."
         ),
     }
 
@@ -474,7 +481,8 @@ def test_jira_resolve_issue_rejects_ambiguous_target_status() -> None:
         "matching_transition_names": ["Resolve", "Fast Resolve"],
         "hint": (
             "The Jira workflow change could not be completed. Stop execution, summarize what you completed, "
-            "and tell the user in your reply with the current status, target status, and available target statuses."
+            "tell the user in your reply with the current status, target status, and available target statuses, "
+            "and ask the user how you should proceed."
         ),
     }
 
@@ -506,7 +514,8 @@ def test_jira_start_issue_rejects_write_outside_configured_project() -> None:
         "error_type": "project_not_allowed",
         "hint": (
             "ANDROID-123 is outside the configured Jira project scope. "
-            "Do not retry this write operation. Stop and tell the user in your reply."
+            "Do not retry this write operation. "
+            "Stop, tell the user in your reply, and ask the user how you should proceed."
         ),
     }
 
@@ -543,6 +552,6 @@ def test_jira_start_issue_rejects_issue_not_assigned_to_current_user() -> None:
         "hint": (
             "IOS-123 is not currently assigned to you. "
             "Do not retry this write operation unless the issue is reassigned to you. "
-            "Stop and tell the user in your reply."
+            "Stop, tell the user in your reply, and ask the user how you should proceed."
         ),
     }

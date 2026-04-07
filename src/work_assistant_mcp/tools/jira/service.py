@@ -7,17 +7,19 @@ from ...config import Settings
 from ...error_messages import format_http_service_error
 from ...hints import (
     INTERNAL_ERROR_RETRY_HINT,
+    required_param_hint,
+)
+from ...logger import error, info, warning
+from .client import JiraApiError, JiraClient
+from .models import JiraIssue
+from .strings import (
     JIRA_INVESTIGATE_ISSUE_HINT,
     JIRA_TRANSITION_FAILURE_HINT,
     jira_assignee_not_allowed_hint,
     jira_attachment_not_found_hint,
     jira_issue_not_found_hint,
     jira_project_not_allowed_hint,
-    required_param_hint,
 )
-from ...logger import error, info, warning
-from .client import JiraApiError, JiraClient
-from .models import JiraIssue
 
 
 JIRA_ISSUE_FIELDS = (
