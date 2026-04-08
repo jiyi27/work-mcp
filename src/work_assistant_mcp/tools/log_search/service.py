@@ -17,8 +17,11 @@ from .strings import (
     TOOL_SEARCH_LOG,
 )
 
-_MAX_RESULTS = 50
-_CONTEXT_LINES = 3
+# Maximum matching lines returned per search call; results beyond this are truncated.
+_MAX_RESULTS = 5
+# Number of lines captured before and after each matching line as context.
+_CONTEXT_LINES = 1
+# Maximum number of files shown per directory listing (directories are not capped).
 _MAX_LISTED_FILES = 10
 
 
@@ -143,11 +146,11 @@ class LogSearchService:
                 ),
             }
 
-        # P2: streamline by line — maintain a pre-context deque and mutate
-        # each result's context list in place to collect post-context lines.
+        # Stream line by line — pre_buffer holds the sliding window of recent lines
+        # for pre-context; post_collectors accumulates post-context into each result.
         pre_buffer: deque[str] = deque(maxlen=_CONTEXT_LINES)
         results: list[dict[str, Any]] = []
-        # Each entry: (context_list, remaining_post_lines)
+        # Each entry: (post_context_list, remaining_post_lines)
         post_collectors: list[tuple[list[str], int]] = []
         truncated = False
         line_no = 0
@@ -159,19 +162,24 @@ class LogSearchService:
 
                 # Feed line to any open post-context collectors
                 still_open = []
-                for ctx, remaining in post_collectors:
-                    ctx.append(line)
+                for post_ctx, remaining in post_collectors:
+                    post_ctx.append(line)
                     if remaining > 1:
-                        still_open.append((ctx, remaining - 1))
+                        still_open.append((post_ctx, remaining - 1))
                 post_collectors = still_open
 
                 if query.lower() in line.lower():
                     if len(results) >= _MAX_RESULTS:
                         truncated = True
                         break
-                    ctx: list[str] = list(pre_buffer) + [line]
-                    results.append({"line_no": line_no, "match": line, "context": ctx})
-                    post_collectors.append((ctx, _CONTEXT_LINES))
+                    post_context: list[str] = []
+                    results.append({
+                        "line_no": line_no,
+                        "match": line,
+                        "pre_context": list(pre_buffer),
+                        "post_context": post_context,
+                    })
+                    post_collectors.append((post_context, _CONTEXT_LINES))
 
                 pre_buffer.append(line)
 

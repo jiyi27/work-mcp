@@ -14,7 +14,7 @@ plugins:
     - log_search
 
 log_search:
-  log_base_dir: /path/to/logs
+  log_base_dir: /Users/david/codes/mcp/work-assistant-mcp/logs
 
 jira:
   # Only these statuses are eligible for jira_get_latest_assigned_issue.
