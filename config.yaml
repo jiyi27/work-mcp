@@ -1,7 +1,7 @@
 server:
-  transport: streamable-http
-  host: 0.0.0.0
-  port: 6060
+  transport: stdio
+#  host: 0.0.0.0
+#  port: 8182
   name: work-assistant-mcp
   instructions: "A work assistant MCP server providing tools for work-related tasks."
 
