@@ -169,5 +169,5 @@ def test_search_log_returns_matching_lines_with_context(tmp_path: Path) -> None:
     result = structured["results"][0]
     assert result["line_no"] == 3
     assert "trace-123" in result["match"]
-    assert "line two" in result["context"]
-    assert "line four" in result["context"]
+    assert "line two" in result["pre_context"]
+    assert "line four" in result["post_context"]

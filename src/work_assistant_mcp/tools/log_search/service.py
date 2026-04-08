@@ -10,6 +10,7 @@ import aiofiles
 from ...config import LogSearchSettings
 from ...hints import required_param_hint
 from .strings import (
+    HINT_FILE_NOT_FOUND,
     HINT_LIST_LOG_FILES_SUCCESS,
     HINT_NO_RESULTS,
     HINT_PATH_OUTSIDE_BASE,
@@ -130,10 +131,7 @@ class LogSearchService:
             return {
                 "success": False,
                 "error_type": "file_not_found",
-                "hint": (
-                    f"File '{file_path}' does not exist. "
-                    f"Call {TOOL_LIST_LOG_FILES} to verify the path."
-                ),
+                "hint": f"File '{file_path}' does not exist. {HINT_FILE_NOT_FOUND}",
             }
         # P1: reject directories — agent may pass a dir path from list_log_files
         if target.is_dir():

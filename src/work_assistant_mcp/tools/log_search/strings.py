@@ -35,6 +35,23 @@ HINT_PATH_OUTSIDE_BASE = (
 )
 
 HINT_NO_RESULTS = (
-    f"No matching lines found. "
-    f"Try a different query, or call {TOOL_LIST_LOG_FILES} to check which files are available."
+    f"No matching lines found in this file. The query may not exist in this log.\n\n"
+    f"Before trying other files:\n"
+    f"1. Check the source code to confirm this log file is where the event you are searching for "
+    f"would be written — it may belong to a different category or service.\n"
+    f"2. Verify that the code path was actually executed — an exception or early return earlier "
+    f"in the flow may have prevented this log line from being written.\n\n"
+    f"If you have confirmed both of the above and still cannot find the log, and this log is "
+    f"required to continue the bug investigation, stop and ask the user to provide the relevant "
+    f"log content directly."
+)
+
+HINT_FILE_NOT_FOUND = (
+    f"Verify the path is correct. "
+    f"Paths passed to {TOOL_SEARCH_LOG} must be relative to the log root — do not use absolute "
+    f"paths or construct paths manually. "
+    f"The `path` field in each entry returned by {TOOL_LIST_LOG_FILES} is already in the correct "
+    f"format and can be passed directly. "
+    f"Call {TOOL_LIST_LOG_FILES} with path=\"\" to browse from the log root and confirm the "
+    f"correct file path."
 )
