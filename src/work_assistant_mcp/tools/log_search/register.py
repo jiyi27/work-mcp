@@ -19,9 +19,9 @@ def register_log_search_tools(mcp: FastMCP, settings: Settings) -> None:
 
     @mcp.tool(name=TOOL_LIST_LOG_FILES, description=LIST_LOG_FILES_DESCRIPTION)
     def list_log_files(
-        path: Annotated[str, "Path relative to the log base directory. Use empty string to list the log root."] = "",
+        path: Annotated[str | None, "Path relative to the log base directory. Omit or pass empty string to list the log root."] = None,
     ) -> dict[str, Any]:
-        return svc.list_files(path)
+        return svc.list_files(path or "")
 
     @mcp.tool(name=TOOL_SEARCH_LOG, description=SEARCH_LOG_DESCRIPTION)
     async def search_log(

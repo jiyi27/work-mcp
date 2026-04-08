@@ -1,7 +1,9 @@
 server:
-  transport: stdio
+  transport: streamable-http
+  host: 0.0.0.0
+  port: 6060
   name: work-assistant-mcp
-  instructions: "A work-focused MCP server with notification tools for local agents."
+  instructions: "A work assistant MCP server providing tools for work-related tasks."
 
 logging:
   dir: logs
