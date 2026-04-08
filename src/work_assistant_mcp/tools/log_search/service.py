@@ -28,111 +28,122 @@ class LogSearchService:
         self._base = Path(settings.log_base_dir).resolve()
 
     def _safe_resolve(self, relative: str) -> Path | None:
-        """Resolve a path relative to log_base_dir. Returns None if outside base."""
-        target = (self._base / relative).resolve()
+        """Return an absolute path under the log base directory, or None if it escapes it."""
+        # Join the user-provided relative path to the configured base directory,
+        # then normalize it into a final absolute path.
+        resolved_path = (self._base / relative).resolve()
+
         try:
-            target.relative_to(self._base)
+            # Ensure the normalized path is still inside the base directory.
+            # This blocks path traversal such as "../secret.log".
+            resolved_path.relative_to(self._base)
         except ValueError:
             return None
-        return target
+
+        return resolved_path
 
     def list_files(self, path: str = "") -> dict[str, Any]:
-        relative = path.strip()
-        if relative in {".", "./"}:
-            relative = ""
-        if relative.endswith("/"):
-            relative = relative.rstrip("/")
+        requested_path = path.strip()
+        # Normalize equivalent directory inputs so "." and trailing "/" map to the same path.
+        if requested_path in {".", "./"}:
+            requested_path = ""
+        if requested_path.endswith("/"):
+            requested_path = requested_path.rstrip("/")
 
-        target = self._safe_resolve(relative)
-        if target is None:
+        # Resolve the requested path and reject anything that escapes the configured log base.
+        absolute_path = self._safe_resolve(requested_path)
+        if absolute_path is None:
             return {
                 "success": False,
                 "error_type": "path_outside_base",
                 "hint": HINT_PATH_OUTSIDE_BASE,
             }
-        if not target.exists():
+        if not absolute_path.exists():
             return {
                 "success": False,
                 "error_type": "path_not_found",
-                "hint": f"Path '{relative or '.'}' does not exist. {HINT_LIST_PATH_NOT_FOUND}",
+                "hint": f"Path '{requested_path or '.'}' does not exist. {HINT_LIST_PATH_NOT_FOUND}",
             }
-        if not target.is_dir():
+        if not absolute_path.is_dir():
             return {
                 "success": False,
                 "error_type": "not_a_directory",
                 "hint": (
-                    f"'{relative}' is a file, not a directory. "
+                    f"'{requested_path}' is a file, not a directory. "
                     f"Use {TOOL_SEARCH_LOG} to search files."
                 ),
             }
 
-        entries_with_mtime: list[tuple[float, dict[str, Any]]] = []
-        for child in target.iterdir():
-            rel = str(child.relative_to(self._base))
-            stat = child.stat()
-            entry: dict[str, Any] = {
-                "name": child.name,
-                "path": rel,
+        # Each file item may represent either a file or a directory in the requested path.
+        # Keep the modification time alongside each item so we can sort newest-first before truncating.
+        file_items_with_mtime: list[tuple[float, dict[str, Any]]] = []
+        for item_path in absolute_path.iterdir():
+            item_relative_path = str(item_path.relative_to(self._base))
+            stat = item_path.stat()
+            file_item: dict[str, Any] = {
+                "name": item_path.name,
+                "path": item_relative_path,
                 "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
             }
-            if child.is_dir():
-                entry["type"] = "dir"
+            if item_path.is_dir():
+                file_item["type"] = "dir"
             else:
-                entry["type"] = "file"
-                entry["size_kb"] = round(stat.st_size / 1024, 1)
-            entries_with_mtime.append((stat.st_mtime, entry))
+                file_item["type"] = "file"
+                file_item["size_kb"] = round(stat.st_size / 1024, 1)
+            file_items_with_mtime.append((stat.st_mtime, file_item))
 
-        entries_with_mtime.sort(key=lambda item: (-item[0], item[1]["name"]))
-        entries = [entry for _, entry in entries_with_mtime[:MAX_LISTED_ENTRIES]]
+        file_items_with_mtime.sort(key=lambda file_item_record: (-file_item_record[0], file_item_record[1]["name"]))
+        file_items = [file_item for _, file_item in file_items_with_mtime[:MAX_LISTED_ENTRIES]]
 
         return {
             "success": True,
-            "path": relative,
-            "entries": entries,
+            "path": requested_path,
+            "entries": file_items,
             "hint": HINT_LIST_LOG_FILES_SUCCESS,
         }
 
     async def search(self, file_path: str, query: str) -> dict[str, Any]:
-        file_path = file_path.strip()
-        query = query.strip()
+        requested_file_path = file_path.strip()
+        normalized_query = query.strip()
 
-        if not file_path:
+        if not requested_file_path:
             return {
                 "success": False,
                 "error_type": "invalid_input",
                 "hint": required_param_hint("file_path"),
             }
-        if not query:
+        if not normalized_query:
             return {
                 "success": False,
                 "error_type": "invalid_input",
                 "hint": required_param_hint("query"),
             }
 
-        target = self._safe_resolve(file_path)
-        if target is None:
+        # Resolve the requested file path and reject anything outside the log base directory.
+        absolute_path = self._safe_resolve(requested_file_path)
+        if absolute_path is None:
             return {
                 "success": False,
                 "error_type": "path_outside_base",
                 "hint": HINT_PATH_OUTSIDE_BASE,
             }
-        if not target.exists():
+        if not absolute_path.exists():
             return {
                 "success": False,
                 "error_type": "file_not_found",
-                "hint": f"File '{file_path}' does not exist. {HINT_FILE_NOT_FOUND}",
+                "hint": f"File '{requested_file_path}' does not exist. {HINT_FILE_NOT_FOUND}",
             }
-        # P1: reject directories — agent may pass a dir path from list_log_files
-        if target.is_dir():
+        # Reject directories here because list_log_files may return directory paths.
+        if absolute_path.is_dir():
             return {
                 "success": False,
                 "error_type": "not_a_file",
                 "hint": (
-                    f"'{file_path}' is a directory. "
+                    f"'{requested_file_path}' is a directory. "
                     f"Call {TOOL_LIST_LOG_FILES} to list its contents."
                 ),
             }
-        file_size = target.stat().st_size
+        file_size = absolute_path.stat().st_size
         if file_size > MAX_FILE_SIZE_BYTES:
             return {
                 "success": False,
@@ -140,36 +151,37 @@ class LogSearchService:
                 "hint": file_too_large_hint(MAX_FILE_SIZE_MB),
             }
 
-        async with aiofiles.open(target, encoding="utf-8", errors="replace") as f:
-            lines = (await f.read()).splitlines()
+        async with aiofiles.open(absolute_path, encoding="utf-8", errors="replace") as file_handle:
+            file_lines = (await file_handle.read()).splitlines()
 
-        lowered_query = query.lower()
-        results: list[dict[str, Any]] = []
+        lowered_query = normalized_query.lower()
+        matched_results: list[dict[str, Any]] = []
         truncated = False
-        for line_index in range(len(lines) - 1, -1, -1):
-            line = lines[line_index]
-            if lowered_query not in line.lower():
+        # Scan from the end so we capture the newest matches first, then sort by line number before returning.
+        for line_index in range(len(file_lines) - 1, -1, -1):
+            matched_line = file_lines[line_index]
+            if lowered_query not in matched_line.lower():
                 continue
-            if len(results) >= MAX_RESULTS:
+            if len(matched_results) >= MAX_RESULTS:
                 truncated = True
                 break
 
-            results.append({
+            matched_results.append({
                 "line_no": line_index + 1,
-                "match": line,
-                "pre_context": lines[max(0, line_index - CONTEXT_LINES):line_index],
-                "post_context": lines[line_index + 1:line_index + 1 + CONTEXT_LINES],
+                "match": matched_line,
+                "pre_context": file_lines[max(0, line_index - CONTEXT_LINES):line_index],
+                "post_context": file_lines[line_index + 1:line_index + 1 + CONTEXT_LINES],
             })
 
-        if not results:
+        if not matched_results:
             return {
                 "success": True,
                 "results": [],
                 "hint": HINT_NO_RESULTS,
             }
 
-        results.sort(key=lambda item: item["line_no"])
-        response: dict[str, Any] = {"success": True, "results": results}
+        matched_results.sort(key=lambda item: item["line_no"])
+        response: dict[str, Any] = {"success": True, "results": matched_results}
         if truncated:
             response["truncated"] = True
             response["hint"] = HINT_TRUNCATED
