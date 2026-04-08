@@ -13,8 +13,8 @@ plugins:
     - jira
     - log_search
 
-  log_search:
-    log_base_dir: /path/to/logs
+log_search:
+  log_base_dir: /path/to/logs
 
 jira:
   # Only these statuses are eligible for jira_get_latest_assigned_issue.

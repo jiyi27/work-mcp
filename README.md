@@ -88,8 +88,8 @@ plugins:
   enabled:
     - log_search
 
-  log_search:
-    log_base_dir: /absolute/path/to/logs
+log_search:
+  log_base_dir: /absolute/path/to/logs
 ```
 
 - `list_log_files` lists one level of files and directories under the log root or a relative path.

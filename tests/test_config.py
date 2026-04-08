@@ -7,6 +7,51 @@ import pytest
 from work_assistant_mcp import config as config_module
 
 
+def test_get_settings_reads_top_level_log_search_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+server:
+  transport: stdio
+plugins:
+  enabled:
+    - log_search
+log_search:
+  log_base_dir: /tmp/work-logs
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    settings = config_module.get_settings()
+
+    assert settings.enabled_plugins == ("log_search",)
+    assert settings.log_search is not None
+    assert settings.log_search.log_base_dir == "/tmp/work-logs"
+
+
+def test_get_settings_requires_log_search_section_when_enabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+server:
+  transport: stdio
+plugins:
+  enabled:
+    - log_search
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="missing log_search section"):
+        config_module.get_settings()
+
+
 def test_get_settings_allows_jira_without_dingtalk(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(

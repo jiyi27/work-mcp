@@ -136,15 +136,12 @@ def _read_string_list(section: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _read_log_search_settings(yaml_cfg: dict[str, Any]) -> LogSearchSettings | None:
-    yaml_plugins = yaml_cfg.get("plugins", {})
-    if not isinstance(yaml_plugins, dict):
-        return None
-    yaml_log_search = yaml_plugins.get("log_search")
+    yaml_log_search = yaml_cfg.get("log_search")
     if not yaml_log_search:
         return None
     if not isinstance(yaml_log_search, dict):
         raise RuntimeError(
-            "Invalid plugins.log_search in config.yaml. Expected a mapping."
+            "Invalid log_search section in config.yaml. Expected a mapping."
         )
 
     log_base_dir = str(yaml_log_search.get("log_base_dir", "")).strip()
@@ -201,12 +198,12 @@ def validate_settings(settings: Settings) -> None:
     if "log_search" in settings.enabled_plugins:
         if settings.log_search is None:
             errors.append(
-                "log_search: missing plugins.log_search section in config.yaml"
+                "log_search: missing log_search section in config.yaml"
             )
         else:
             if not settings.log_search.log_base_dir:
                 errors.append(
-                    "log_search: missing plugins.log_search.log_base_dir in config.yaml"
+                    "log_search: missing log_search.log_base_dir in config.yaml"
                 )
 
     if errors:
