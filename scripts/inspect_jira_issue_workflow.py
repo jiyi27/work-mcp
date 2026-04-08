@@ -4,10 +4,10 @@ import argparse
 import json
 import sys
 
-from work_assistant_mcp.config import get_settings
-from work_assistant_mcp.logger import configure as configure_logger
-from work_assistant_mcp.tools.jira.client import JiraApiError, JiraClient
-from work_assistant_mcp.tools.jira.inspect import build_transition_inspection
+from work_mcp.config import get_settings
+from work_mcp.logger import configure as configure_logger
+from work_mcp.tools.jira.client import JiraApiError, JiraClient
+from work_mcp.tools.jira.inspect import build_transition_inspection
 
 
 INSPECTION_FIELDS = ("summary", "status")

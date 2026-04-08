@@ -4,7 +4,7 @@ from email.message import Message
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from work_assistant_mcp.http import HttpRequestError, request_json
+from work_mcp.http import HttpRequestError, request_json
 
 
 def _http_error(*, code: int, body: str, content_type: str) -> HTTPError:
@@ -30,7 +30,7 @@ def test_request_json_summarizes_html_http_error_body() -> None:
         ),
     )
 
-    with patch("work_assistant_mcp.http.urlopen", side_effect=error), patch.object(
+    with patch("work_mcp.http.urlopen", side_effect=error), patch.object(
         error,
         "read",
         return_value=(
@@ -60,7 +60,7 @@ def test_request_json_returns_unknown_upstream_error_when_body_is_unparseable() 
         body="",
     )
 
-    with patch("work_assistant_mcp.http.urlopen", side_effect=error), patch.object(
+    with patch("work_mcp.http.urlopen", side_effect=error), patch.object(
         error,
         "read",
         return_value=b"",

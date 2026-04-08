@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 from urllib.parse import parse_qs, urlsplit
 
-from work_assistant_mcp.config import ServerSettings, Settings
-from work_assistant_mcp.server import create_mcp
+from work_mcp.config import ServerSettings, Settings
+from work_mcp.server import _apply_cli_overrides, create_mcp
 
 _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
@@ -26,7 +26,7 @@ def _make_settings(**overrides: object) -> Settings:
         jira_project_key="IOS",
         log_dir=Path("logs"),
         log_level="info",
-        server_name="work-assistant-mcp",
+        server_name="work-mcp",
         server_instructions="",
         enabled_plugins=("dingtalk",),
         jira_latest_assigned_statuses=("待处理", "已接收", "处理中"),
@@ -54,7 +54,7 @@ def test_list_tools_includes_dingtalk_send_markdown() -> None:
 def test_dingtalk_send_markdown_returns_structured_result() -> None:
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.dingtalk.request_json",
+        "work_mcp.tools.dingtalk.request_json",
         return_value={"errcode": 0, "errmsg": "ok"},
     ):
         _, structured = asyncio.run(
@@ -70,15 +70,15 @@ def test_dingtalk_send_markdown_returns_structured_result() -> None:
 def test_dingtalk_send_markdown_writes_success_log(tmp_path: Path) -> None:
     mcp = create_mcp(_make_settings(log_dir=tmp_path))
     with patch(
-        "work_assistant_mcp.tools.dingtalk.request_json",
+        "work_mcp.tools.dingtalk.request_json",
         return_value={"errcode": 0, "errmsg": "ok"},
     ):
         with patch.dict(
             "os.environ",
             {
                 "DINGTALK_WEBHOOK_URL": "https://example.invalid/webhook",
-                "WORK_ASSISTANT_LOG_DIR": str(tmp_path),
-                "WORK_ASSISTANT_LOG_LEVEL": "info",
+                "WORK_MCP_LOG_DIR": str(tmp_path),
+                "WORK_MCP_LOG_LEVEL": "info",
             },
             clear=False,
         ):
@@ -118,8 +118,8 @@ def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> Non
         )
     )
 
-    with patch("work_assistant_mcp.tools.dingtalk.request_json", side_effect=fake_request_json):
-        with patch("work_assistant_mcp.tools.dingtalk.time.time", return_value=fixed_timestamp_ms / 1000):
+    with patch("work_mcp.tools.dingtalk.request_json", side_effect=fake_request_json):
+        with patch("work_mcp.tools.dingtalk.time.time", return_value=fixed_timestamp_ms / 1000):
             with patch.dict(
                 "os.environ",
                 {
@@ -144,11 +144,11 @@ def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> Non
 
 
 def test_dingtalk_send_markdown_returns_clean_message_for_http_failure() -> None:
-    from work_assistant_mcp.http import HttpRequestError
+    from work_mcp.http import HttpRequestError
 
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.dingtalk.request_json",
+        "work_mcp.tools.dingtalk.request_json",
         side_effect=HttpRequestError(
             "DingTalk request failed with HTTP 500: unknown upstream error",
             status_code=500,
@@ -190,3 +190,39 @@ def test_enabled_plugins_can_register_jira_only() -> None:
         "jira_start_issue",
         "jira_resolve_issue",
     ]
+
+
+def test_apply_cli_overrides_can_switch_to_http_mode() -> None:
+    settings = _apply_cli_overrides(
+        _make_settings(),
+        transport="streamable-http",
+        host="127.0.0.1",
+        port=9000,
+    )
+
+    assert settings.server == ServerSettings(
+        transport="streamable-http",
+        host="127.0.0.1",
+        port=9000,
+    )
+
+
+def test_apply_cli_overrides_clears_network_binding_for_stdio() -> None:
+    settings = _apply_cli_overrides(
+        _make_settings(
+            server=ServerSettings(
+                transport="streamable-http",
+                host="127.0.0.1",
+                port=9000,
+            )
+        ),
+        transport="stdio",
+        host="0.0.0.0",
+        port=8182,
+    )
+
+    assert settings.server == ServerSettings(
+        transport="stdio",
+        host=None,
+        port=None,
+    )

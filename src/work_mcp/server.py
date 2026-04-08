@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import functools
+from dataclasses import replace
 from typing import Any, Callable
 
 from mcp.server.fastmcp import FastMCP
 
-from .config import Settings, get_settings
+from .config import (
+    ALLOWED_TRANSPORTS,
+    ServerSettings,
+    Settings,
+    get_settings,
+    validate_settings,
+)
 from .logger import configure as configure_logger, info, error
 from .tools import PLUGIN_REGISTRY
 
@@ -79,9 +87,58 @@ def create_mcp(settings: Settings) -> FastMCP:
     return mcp
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="work-mcp")
+    parser.add_argument(
+        "--transport",
+        choices=sorted(ALLOWED_TRANSPORTS),
+        help="Override server.transport from config.yaml for this run.",
+    )
+    parser.add_argument(
+        "--host",
+        help="Override server.host from config.yaml for this run.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        help="Override server.port from config.yaml for this run.",
+    )
+    return parser
+
+
+def _apply_cli_overrides(
+    settings: Settings,
+    *,
+    transport: str | None,
+    host: str | None,
+    port: int | None,
+) -> Settings:
+    server = settings.server
+    if transport is not None:
+        if transport == "stdio":
+            server = ServerSettings(transport=transport, host=None, port=None)
+        else:
+            server = replace(server, transport=transport)
+    if host is not None:
+        server = replace(server, host=host)
+    if port is not None:
+        server = replace(server, port=port)
+    if server.transport == "stdio":
+        server = replace(server, host=None, port=None)
+    updated = replace(settings, server=server)
+    validate_settings(updated)
+    return updated
+
+
+def main(argv: list[str] | None = None) -> None:
     """Entry point for the MCP server."""
-    settings = get_settings()
+    args = _build_parser().parse_args(argv)
+    settings = _apply_cli_overrides(
+        get_settings(),
+        transport=args.transport,
+        host=args.host,
+        port=args.port,
+    )
     configure_logger(log_dir=settings.log_dir, level=settings.log_level)
     mcp = create_mcp(settings)
     transport = settings.server.transport

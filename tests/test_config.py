@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from work_assistant_mcp import config as config_module
+from work_mcp import config as config_module
 
 
 def test_get_settings_reads_top_level_log_search_config(
@@ -186,3 +186,30 @@ jira:
 
     with pytest.raises(RuntimeError, match="missing jira.latest_assigned_statuses"):
         config_module.get_settings()
+
+
+def test_get_settings_reads_work_mcp_logging_env_vars(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+server:
+  transport: stdio
+plugins:
+  enabled: []
+logging:
+  dir: logs-from-yaml
+  level: warning
+""".strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setenv("WORK_MCP_LOG_DIR", str(tmp_path / "logs-from-env"))
+    monkeypatch.setenv("WORK_MCP_LOG_LEVEL", "debug")
+
+    settings = config_module.get_settings()
+
+    assert settings.log_dir == tmp_path / "logs-from-env"
+    assert settings.log_level == "debug"

@@ -1,4 +1,4 @@
-## work-assistant-mcp
+## work-mcp
 
 An MCP server for work-related tools used by local agents.
 
@@ -100,7 +100,7 @@ log_search:
 
 ```yaml
 server:
-  name: work-assistant-mcp
+  name: work-mcp
   instructions: "A work-focused MCP server with notification tools for local agents."
 
 logging:
@@ -112,15 +112,15 @@ Environment variables take priority over `config.yaml` — useful for CI/CD or D
 
 | Variable                   | Overrides       |
 | -------------------------- | --------------- |
-| `WORK_ASSISTANT_LOG_DIR`   | `logging.dir`   |
-| `WORK_ASSISTANT_LOG_LEVEL` | `logging.level` |
+| `WORK_MCP_LOG_DIR`         | `logging.dir`   |
+| `WORK_MCP_LOG_LEVEL`       | `logging.level` |
 
 ## Adding a New Tool
 
-1. Implement `register_<name>_tools(mcp: FastMCP, settings: Settings)` under `src/work_assistant_mcp/tools/`.
-2. Keep simple plugins in a single module such as `src/work_assistant_mcp/tools/<name>.py`.
-3. When a plugin grows into multiple focused files, group it as a package such as `src/work_assistant_mcp/tools/<name>/`.
-4. Add an entry to `PLUGIN_REGISTRY` in `src/work_assistant_mcp/tools/__init__.py`.
+1. Implement `register_<name>_tools(mcp: FastMCP, settings: Settings)` under `src/work_mcp/tools/`.
+2. Keep simple plugins in a single module such as `src/work_mcp/tools/<name>.py`.
+3. When a plugin grows into multiple focused files, group it as a package such as `src/work_mcp/tools/<name>/`.
+4. Add an entry to `PLUGIN_REGISTRY` in `src/work_mcp/tools/__init__.py`.
 5. Add the plugin name to `plugins.enabled` in `config.yaml`.
 
 ## Agent Setup
@@ -130,10 +130,10 @@ Point your MCP client or agent at the packaged entry point:
 ```json
 {
   "mcpServers": {
-    "work-assistant": {
+    "work-mcp": {
       "command": "uv",
-      "args": ["run", "work-assistant-mcp"],
-      "cwd": "/absolute/path/to/work-assistant-mcp"
+      "args": ["run", "work-mcp"],
+      "cwd": "/absolute/path/to/work-mcp"
     }
   }
 }
@@ -144,8 +144,16 @@ If your MCP client starts servers from the current repository root, `cwd` can us
 ## Run
 
 ```bash
-uv run work-assistant-mcp
+uv run work-mcp
 ```
+
+Run in HTTP mode without changing `config.yaml`:
+
+```bash
+uv run work-mcp --transport streamable-http --host 0.0.0.0 --port 8182
+```
+
+Or use `make run`.
 
 ## Validate Locally
 

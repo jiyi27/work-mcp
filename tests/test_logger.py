@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from work_assistant_mcp import logger
+from work_mcp import logger
 
 
 def _read_single_record(log_dir: Path, level: str) -> dict[str, object]:

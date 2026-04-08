@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from work_assistant_mcp.tools.jira.inspect import build_transition_inspection
+from work_mcp.tools.jira.inspect import build_transition_inspection
 
 
 def test_build_transition_inspection_includes_status_categories_and_unique_targets() -> None:

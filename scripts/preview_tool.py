@@ -6,9 +6,9 @@ import json
 import sys
 from typing import Any
 
-from work_assistant_mcp.config import get_settings
-from work_assistant_mcp.logger import configure as configure_logger
-from work_assistant_mcp.server import create_mcp
+from work_mcp.config import get_settings
+from work_mcp.logger import configure as configure_logger
+from work_mcp.server import create_mcp
 
 
 def _build_mcp():

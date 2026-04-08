@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from work_assistant_mcp import logger
-from work_assistant_mcp.config import ServerSettings, Settings
-from work_assistant_mcp.server import create_mcp
-from work_assistant_mcp.tools.jira.client import JiraApiError
+from work_mcp import logger
+from work_mcp.config import ServerSettings, Settings
+from work_mcp.server import create_mcp
+from work_mcp.tools.jira.client import JiraApiError
 
 _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
@@ -23,7 +23,7 @@ def _make_settings(**overrides: object) -> Settings:
         jira_project_key="IOS",
         log_dir=Path("logs"),
         log_level="info",
-        server_name="work-assistant-mcp",
+        server_name="work-mcp",
         server_instructions="",
         enabled_plugins=("jira",),
         jira_latest_assigned_statuses=("待处理", "已接收", "处理中"),
@@ -38,7 +38,7 @@ def _make_settings(**overrides: object) -> Settings:
 
 
 def test_jira_client_uses_bearer_auth_by_default() -> None:
-    from work_assistant_mcp.tools.jira.client import JiraClient
+    from work_mcp.tools.jira.client import JiraClient
 
     client = JiraClient(_make_settings())
 
@@ -70,7 +70,7 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata()
     ]
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        "work_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
     ):
         _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
@@ -105,7 +105,7 @@ def test_jira_get_latest_assigned_issue_uses_configured_status_list_in_jql() -> 
     service_settings = _make_settings(jira_project_key="IOS", jira_latest_assigned_statuses=("待处理", "已接收"))
     mcp = create_mcp(service_settings)
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        "work_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=[],
     ) as search_mock:
         _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
@@ -151,13 +151,13 @@ def test_jira_get_attachment_image_returns_single_attachment_content() -> None:
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.download_attachment",
+        "work_mcp.tools.jira.client.JiraClient.download_attachment",
         return_value=b"png-bytes",
     ):
         _, structured = asyncio.run(
@@ -204,13 +204,13 @@ def test_jira_get_attachment_image_log_truncates_large_base64(tmp_path: Path) ->
     logger.configure(log_dir=tmp_path, level="info")
     mcp = create_mcp(_make_settings(log_dir=tmp_path))
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.download_attachment",
+        "work_mcp.tools.jira.client.JiraClient.download_attachment",
         return_value=b"a" * 800,
     ):
         _, structured = asyncio.run(
@@ -250,10 +250,10 @@ def test_jira_get_attachment_image_rejects_unknown_attachment() -> None:
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ):
         _, structured = asyncio.run(
@@ -277,7 +277,7 @@ def test_jira_get_attachment_image_rejects_unknown_attachment() -> None:
 def test_jira_get_latest_assigned_issue_returns_clean_message_for_auth_failure() -> None:
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        "work_mcp.tools.jira.client.JiraClient.search_issues",
         side_effect=JiraApiError(
             "Jira request failed with HTTP 401: authentication failed",
             status_code=401,
@@ -302,7 +302,7 @@ def test_jira_get_latest_assigned_issue_returns_clean_message_for_auth_failure()
 def test_jira_get_latest_assigned_issue_returns_generic_message_for_non_auth_http_error() -> None:
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.search_issues",
+        "work_mcp.tools.jira.client.JiraClient.search_issues",
         side_effect=JiraApiError(
             "Jira request failed with HTTP 500: internal server error",
             status_code=500,
@@ -336,13 +336,13 @@ def test_jira_start_issue_returns_transition_not_available_with_current_context(
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
+        "work_mcp.tools.jira.client.JiraClient.get_transitions",
         return_value=[
             {"id": "41", "name": "Resolve", "to": {"name": "已解决"}},
             {"id": "42", "name": "Close", "to": {"name": "Closed"}},
@@ -382,19 +382,19 @@ def test_jira_start_issue_transitions_by_target_status() -> None:
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
+        "work_mcp.tools.jira.client.JiraClient.get_transitions",
         return_value=[
             {"id": "21", "name": "Start Progress", "to": {"name": "进行中"}},
             {"id": "22", "name": "Accept", "to": {"name": "已接收"}},
         ],
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.transition_issue",
+        "work_mcp.tools.jira.client.JiraClient.transition_issue",
         return_value=None,
     ) as transition_mock:
         _, structured = asyncio.run(
@@ -420,16 +420,16 @@ def test_jira_resolve_issue_transitions_successfully() -> None:
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
+        "work_mcp.tools.jira.client.JiraClient.get_transitions",
         return_value=[{"id": "31", "name": "Resolve", "to": {"name": "已解决"}}],
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.transition_issue",
+        "work_mcp.tools.jira.client.JiraClient.transition_issue",
         return_value=None,
     ) as transition_mock:
         _, structured = asyncio.run(
@@ -455,13 +455,13 @@ def test_jira_resolve_issue_rejects_ambiguous_target_status() -> None:
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_transitions",
+        "work_mcp.tools.jira.client.JiraClient.get_transitions",
         return_value=[
             {"id": "31", "name": "Resolve", "to": {"name": "已解决"}},
             {"id": "32", "name": "Fast Resolve", "to": {"name": "已解决"}},
@@ -502,7 +502,7 @@ def test_jira_start_issue_rejects_write_outside_configured_project() -> None:
     }
     mcp = create_mcp(_make_settings(jira_project_key="IOS"))
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ):
         _, structured = asyncio.run(
@@ -536,10 +536,10 @@ def test_jira_start_issue_rejects_issue_not_assigned_to_current_user() -> None:
     }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_issue",
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
         return_value=issue_payload,
     ), patch(
-        "work_assistant_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
+        "work_mcp.tools.jira.client.JiraClient.get_current_user_identifiers",
         return_value=frozenset({"user@example.invalid"}),
     ):
         _, structured = asyncio.run(

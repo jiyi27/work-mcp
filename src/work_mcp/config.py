@@ -14,6 +14,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOG_LEVELS = frozenset({"debug", "info", "warning", "error"})
 KNOWN_PLUGINS = frozenset({"dingtalk", "jira", "log_search"})
 ALLOWED_TRANSPORTS = frozenset({"stdio", "streamable-http"})
+DEFAULT_SERVER_NAME = "work-mcp"
+LOG_DIR_ENV_VAR = "WORK_MCP_LOG_DIR"
+LOG_LEVEL_ENV_VAR = "WORK_MCP_LOG_LEVEL"
 
 
 @dataclass(frozen=True)
@@ -230,22 +233,22 @@ def get_settings() -> Settings:
     # non-sensitive values — env overrides yaml, yaml overrides defaults
     yaml_logging = yaml_cfg.get("logging", {})
     log_dir_raw = (
-        os.getenv("WORK_ASSISTANT_LOG_DIR", "").strip()
+        os.getenv(LOG_DIR_ENV_VAR, "").strip()
         or yaml_logging.get("dir", "logs")
     )
     log_level = (
-        os.getenv("WORK_ASSISTANT_LOG_LEVEL", "").strip().lower()
+        os.getenv(LOG_LEVEL_ENV_VAR, "").strip().lower()
         or str(yaml_logging.get("level", "info")).lower()
     )
     if log_level not in LOG_LEVELS:
         valid_levels = ", ".join(sorted(LOG_LEVELS))
         raise RuntimeError(
-            "Invalid WORK_ASSISTANT_LOG_LEVEL. "
+            f"Invalid {LOG_LEVEL_ENV_VAR}. "
             f"Expected one of: {valid_levels}."
         )
 
     yaml_server = yaml_cfg.get("server", {})
-    server_name = yaml_server.get("name", "work-assistant-mcp")
+    server_name = yaml_server.get("name", DEFAULT_SERVER_NAME)
     server_instructions = yaml_server.get("instructions", "")
 
     yaml_jira = yaml_cfg.get("jira", {})

@@ -4,9 +4,9 @@ import asyncio
 import os
 from pathlib import Path
 
-from work_assistant_mcp.config import LogSearchSettings, ServerSettings, Settings
-from work_assistant_mcp.server import create_mcp
-from work_assistant_mcp.tools.log_search.constants import MAX_FILE_SIZE_BYTES, MAX_RESULTS
+from work_mcp.config import LogSearchSettings, ServerSettings, Settings
+from work_mcp.server import create_mcp
+from work_mcp.tools.log_search.constants import MAX_FILE_SIZE_BYTES, MAX_RESULTS
 
 _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
@@ -21,7 +21,7 @@ def _make_settings(tmp_path: Path, **overrides: object) -> Settings:
         jira_project_key="IOS",
         log_dir=tmp_path / "logs",
         log_level="info",
-        server_name="work-assistant-mcp",
+        server_name="work-mcp",
         server_instructions="",
         enabled_plugins=("log_search",),
         jira_latest_assigned_statuses=("待处理", "已接收", "处理中"),
