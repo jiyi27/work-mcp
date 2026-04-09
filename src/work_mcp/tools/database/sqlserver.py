@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import atexit
 from contextlib import closing
-from typing import Any, NoReturn
+from threading import RLock
+from typing import Any, Callable, NoReturn, TypeVar
 
 import pyodbc
 
@@ -50,23 +52,50 @@ WHERE c.TABLE_NAME = ?
 ORDER BY c.ORDINAL_POSITION
 """
 
+CONNECTION_ERROR_MARKERS = (
+    "login failed",
+    "access denied",
+    "timeout expired",
+    "data source name not found",
+    "server does not exist",
+    "network-related",
+    "could not open a connection",
+    "odbc driver",
+    "client unable to establish connection",
+    "connection is busy",
+    "communication link failure",
+    "connection reset",
+    "connection was terminated",
+    "connection is closed",
+)
+
+T = TypeVar("T")
+
 
 class SqlServerClient(AbstractDatabaseClient):
     def __init__(self, settings: DatabaseSettings) -> None:
         self._settings = settings
+        self._connections: dict[str, pyodbc.Connection] = {}
+        self._connections_lock = RLock()
+        self._operation_locks: dict[str, RLock] = {}
+        atexit.register(self.close)
 
     def list_databases(self) -> list[str]:
-        with closing(self._connect()) as connection, closing(connection.cursor()) as cursor:
+        def operation(cursor: pyodbc.Cursor) -> list[str]:
             cursor.execute(LIST_DATABASES_SQL)
             return [str(row[0]) for row in cursor.fetchall()]
 
+        return self._run_with_cursor(None, operation)
+
     def list_tables(self, database: str) -> list[str]:
-        with closing(self._connect(database)) as connection, closing(connection.cursor()) as cursor:
+        def operation(cursor: pyodbc.Cursor) -> list[str]:
             cursor.execute(LIST_TABLES_SQL)
             return [str(row[0]) for row in cursor.fetchall()]
 
+        return self._run_with_cursor(database, operation)
+
     def get_table_schema(self, database: str, table: str) -> list[dict[str, Any]]:
-        with closing(self._connect(database)) as connection, closing(connection.cursor()) as cursor:
+        def operation(cursor: pyodbc.Cursor) -> list[dict[str, Any]]:
             cursor.execute(TABLE_SCHEMA_SQL, table)
             rows = cursor.fetchall()
             if not rows:
@@ -75,8 +104,10 @@ class SqlServerClient(AbstractDatabaseClient):
                 )
             return [self._serialize_schema_row(row) for row in rows]
 
+        return self._run_with_cursor(database, operation)
+
     def execute_query(self, database: str, sql: str, limit: int) -> QueryResult:
-        with closing(self._connect(database)) as connection, closing(connection.cursor()) as cursor:
+        def operation(cursor: pyodbc.Cursor) -> QueryResult:
             try:
                 cursor.execute(sql)
             except pyodbc.Error as exc:
@@ -97,17 +128,81 @@ class SqlServerClient(AbstractDatabaseClient):
                 truncated=truncated,
             )
 
-    def _connect(self, database: str | None = None) -> pyodbc.Connection:
+        return self._run_with_cursor(database, operation)
+
+    def close(self) -> None:
+        with self._connections_lock:
+            connections = list(self._connections.values())
+            self._connections.clear()
+        for connection in connections:
+            with closing(connection):
+                pass
+
+    def _run_with_cursor(
+        self,
+        database: str | None,
+        operation: Callable[[pyodbc.Cursor], T],
+    ) -> T:
+        resolved_database = database or self._settings.default_database
+        operation_lock = self._get_operation_lock(resolved_database)
+        with operation_lock:
+            try:
+                with closing(self._get_connection(resolved_database).cursor()) as cursor:
+                    return operation(cursor)
+            except pyodbc.Error as exc:
+                if self._is_connection_error(exc):
+                    self._discard_connection(resolved_database)
+                    try:
+                        with closing(
+                            self._get_connection(resolved_database, force_new=True).cursor()
+                        ) as cursor:
+                            return operation(cursor)
+                    except pyodbc.Error as retry_exc:
+                        self._raise_for_pyodbc_error(retry_exc, database=database)
+                self._raise_for_pyodbc_error(exc, database=database)
+
+    def _get_connection(
+        self,
+        database: str,
+        *,
+        force_new: bool = False,
+    ) -> pyodbc.Connection:
+        with self._connections_lock:
+            if force_new:
+                self._discard_connection(database)
+            connection = self._connections.get(database)
+            if connection is not None:
+                return connection
+            connection = self._connect(database)
+            self._connections[database] = connection
+            return connection
+
+    def _discard_connection(self, database: str) -> None:
+        with self._connections_lock:
+            connection = self._connections.pop(database, None)
+        if connection is None:
+            return
+        with closing(connection):
+            pass
+
+    def _get_operation_lock(self, database: str) -> RLock:
+        with self._connections_lock:
+            lock = self._operation_locks.get(database)
+            if lock is None:
+                lock = RLock()
+                self._operation_locks[database] = lock
+            return lock
+
+    def _connect(self, database: str) -> pyodbc.Connection:
         try:
             connection = pyodbc.connect(
-                self._connection_string(database or self._settings.default_database),
+                self._connection_string(database),
                 timeout=self._settings.connect_timeout_seconds,
                 autocommit=True,
             )
             if connection is None:
-                db_fragment = f" for database '{database}'" if database else ""
                 raise DatabaseConnectionError(
-                    f"SQL Server connection failed{db_fragment}: pyodbc.connect() returned None."
+                    f"SQL Server connection failed for database '{database}': pyodbc.connect() returned None."
                 )
             return connection
         except pyodbc.Error as exc:
@@ -137,26 +232,16 @@ class SqlServerClient(AbstractDatabaseClient):
             raise DatabaseNotFoundError(message) from exc
         if "invalid object name" in lowered:
             raise TableNotFoundError(message) from exc
-        if any(
-            marker in lowered
-            for marker in (
-                "login failed",
-                "access denied",
-                "timeout expired",
-                "data source name not found",
-                "server does not exist",
-                "network-related",
-                "could not open a connection",
-                "odbc driver",
-                "client unable to establish connection",
-                "connection is busy",
-            )
-        ):
+        if any(marker in lowered for marker in CONNECTION_ERROR_MARKERS):
             db_fragment = f" for database '{database}'" if database else ""
             raise DatabaseConnectionError(
                 f"SQL Server connection failed{db_fragment}: {message}"
             ) from exc
         raise QueryExecutionError(message) from exc
+
+    def _is_connection_error(self, exc: pyodbc.Error) -> bool:
+        message = _format_pyodbc_error(exc).lower()
+        return any(marker in message for marker in CONNECTION_ERROR_MARKERS)
 
     def _serialize_schema_row(self, row: Any) -> dict[str, Any]:
         data_type = str(row[1])
