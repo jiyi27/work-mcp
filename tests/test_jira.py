@@ -97,6 +97,52 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata()
             "stop processing, summarize your findings, tell the user in your reply, "
             "and ask the user how you should proceed."
         ),
+        "image_handling_hint": (
+            "This issue includes image attachments, but this tool does not return image contents yet. "
+            "Do not assume the issue context is complete if the task may depend on visual details. "
+            "Before proceeding with implementation or diagnosis, ask the user to summarize the relevant image contents."
+        ),
+    }
+
+
+def test_jira_get_latest_assigned_issue_omits_image_hint_without_image_attachments() -> None:
+    search_results = [
+        {
+            "key": "IOS-124",
+            "fields": {
+                "summary": "Crash on launch",
+                "description": "Steps to reproduce",
+                "status": {"name": "Todo"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "故障"},
+                "updated": "2026-04-02T10:00:00.000+0800",
+                "attachment": [],
+            },
+        }
+    ]
+    mcp = create_mcp(_make_settings())
+    with patch(
+        "work_mcp.tools.jira.client.JiraClient.search_issues",
+        return_value=search_results,
+    ):
+        _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
+
+    assert structured == {
+        "found": True,
+        "issue": {
+            "key": "IOS-124",
+            "summary": "Crash on launch",
+            "description": "Steps to reproduce",
+            "status": "Todo",
+            "priority": "High",
+            "issue_type": "故障",
+        },
+        "attachments": [],
+        "hint": (
+            "If you cannot determine the root cause or the issue appears to already be resolved, "
+            "stop processing, summarize your findings, tell the user in your reply, "
+            "and ask the user how you should proceed."
+        ),
     }
 
 

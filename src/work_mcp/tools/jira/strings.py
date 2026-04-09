@@ -16,6 +16,12 @@ JIRA_TRANSITION_FAILURE_HINT = (
     "and ask the user how you should proceed."
 )
 
+JIRA_IMAGE_ATTACHMENT_CONTEXT_MISSING_HINT = (
+    "This issue includes image attachments, but this tool does not return image contents yet. "
+    "Do not assume the issue context is complete if the task may depend on visual details. "
+    "Before proceeding with implementation or diagnosis, ask the user to summarize the relevant image contents."
+)
+
 
 def jira_issue_not_found_hint(issue_key: str) -> str:
     return (

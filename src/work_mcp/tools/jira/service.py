@@ -13,6 +13,7 @@ from ...logger import error, info, warning
 from .client import JiraApiError, JiraClient
 from .models import JiraIssue
 from .strings import (
+    JIRA_IMAGE_ATTACHMENT_CONTEXT_MISSING_HINT,
     JIRA_INVESTIGATE_ISSUE_HINT,
     JIRA_TRANSITION_FAILURE_HINT,
     jira_assignee_not_allowed_hint,
@@ -56,7 +57,7 @@ class JiraService:
             "jira.get_latest_assigned_issue.succeeded",
             {"issue_key": issue.key, "attachment_count": len(attachments)},
         )
-        return {
+        result = {
             "found": True,
             "issue": {
                 "key": issue.key,
@@ -69,6 +70,9 @@ class JiraService:
             "attachments": attachments,
             "hint": JIRA_INVESTIGATE_ISSUE_HINT,
         }
+        if attachments:
+            result["image_handling_hint"] = JIRA_IMAGE_ATTACHMENT_CONTEXT_MISSING_HINT
+        return result
 
     def get_attachment_image(self, issue_key: str, attachment_id: str) -> dict[str, Any]:
         issue_key = issue_key.strip()
