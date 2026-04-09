@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from contextlib import closing
-from typing import Any
+from typing import Any, NoReturn
 
 import pyodbc
 
 from ...config import DatabaseSettings
 from .base import (
+    AbstractDatabaseClient,
     DatabaseConnectionError,
     DatabaseNotFoundError,
     QueryExecutionError,
@@ -50,7 +51,7 @@ ORDER BY c.ORDINAL_POSITION
 """
 
 
-class SqlServerClient:
+class SqlServerClient(AbstractDatabaseClient):
     def __init__(self, settings: DatabaseSettings) -> None:
         self._settings = settings
 
@@ -98,11 +99,17 @@ class SqlServerClient:
 
     def _connect(self, database: str | None = None) -> pyodbc.Connection:
         try:
-            return pyodbc.connect(
+            connection = pyodbc.connect(
                 self._connection_string(database or self._settings.default_database),
                 timeout=self._settings.connect_timeout_seconds,
                 autocommit=True,
             )
+            if connection is None:
+                db_fragment = f" for database '{database}'" if database else ""
+                raise DatabaseConnectionError(
+                    f"SQL Server connection failed{db_fragment}: pyodbc.connect() returned None."
+                )
+            return connection
         except pyodbc.Error as exc:
             self._raise_for_pyodbc_error(exc, database=database)
 
@@ -123,7 +130,7 @@ class SqlServerClient:
         exc: pyodbc.Error,
         *,
         database: str | None = None,
-    ) -> None:
+    ) -> NoReturn:
         message = _format_pyodbc_error(exc)
         lowered = message.lower()
         if "cannot open database" in lowered or "unknown database" in lowered:
