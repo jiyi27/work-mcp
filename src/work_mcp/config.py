@@ -15,8 +15,6 @@ LOG_LEVELS = frozenset({"debug", "info", "warning", "error"})
 KNOWN_PLUGINS = frozenset({"dingtalk", "jira", "log_search"})
 ALLOWED_TRANSPORTS = frozenset({"stdio", "streamable-http"})
 DEFAULT_SERVER_NAME = "work-mcp"
-LOG_DIR_ENV_VAR = "WORK_MCP_LOG_DIR"
-LOG_LEVEL_ENV_VAR = "WORK_MCP_LOG_LEVEL"
 
 
 @dataclass(frozen=True)
@@ -41,7 +39,7 @@ class Settings:
     jira_base_url: str | None
     jira_api_token: str | None
     jira_project_key: str | None
-    # non-sensitive — loaded from config.yaml (env can override)
+    # non-sensitive — loaded from config.yaml
     log_dir: Path
     log_level: str
     server_name: str
@@ -230,20 +228,16 @@ def get_settings() -> Settings:
     jira_api_token = os.getenv("JIRA_API_TOKEN", "").strip() or None
     jira_project_key = os.getenv("JIRA_PROJECT_KEY", "").strip() or None
 
-    # non-sensitive values — env overrides yaml, yaml overrides defaults
+    # non-sensitive values — only from config.yaml
     yaml_logging = yaml_cfg.get("logging", {})
-    log_dir_raw = (
-        os.getenv(LOG_DIR_ENV_VAR, "").strip()
-        or yaml_logging.get("dir", "logs")
-    )
-    log_level = (
-        os.getenv(LOG_LEVEL_ENV_VAR, "").strip().lower()
-        or str(yaml_logging.get("level", "info")).lower()
-    )
+    if not isinstance(yaml_logging, dict):
+        raise RuntimeError("Invalid logging section in config.yaml. Expected a mapping.")
+    log_dir_raw = str(yaml_logging.get("dir", "logs")).strip() or "logs"
+    log_level = str(yaml_logging.get("level", "info")).strip().lower() or "info"
     if log_level not in LOG_LEVELS:
         valid_levels = ", ".join(sorted(LOG_LEVELS))
         raise RuntimeError(
-            f"Invalid {LOG_LEVEL_ENV_VAR}. "
+            "Invalid logging.level in config.yaml. "
             f"Expected one of: {valid_levels}."
         )
 

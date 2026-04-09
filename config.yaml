@@ -1,37 +1,47 @@
 server:
+  # Required. Selects how the MCP server is exposed.
+  # Use `stdio` for local agent launches. Use `streamable-http` when serving over HTTP.
   transport: stdio
+  # Optional. Only used when `server.transport` is `streamable-http`.
 #  host: 0.0.0.0
+  # Optional. Only used when `server.transport` is `streamable-http`.
 #  port: 8182
+  # Optional. MCP server display name shown to clients.
   name: work-mcp
+  # Optional. High-level instructions exposed to MCP clients for this server.
   instructions: "A work assistant MCP server providing tools for work-related tasks."
 
 logging:
+  # Optional. Directory where structured JSONL logs are written.
   dir: logs
+  # Optional. Minimum log severity to write. Allowed: debug, info, warning, error.
   level: info
 
 plugins:
+  # Required. Enable plugins explicitly; only listed plugins register tools at startup.
   enabled:
     - dingtalk
     - jira
     - log_search
 
 log_search:
+  # Required when `log_search` is enabled. Absolute directory that log tools can browse and search.
   log_base_dir: /Users/david/codes/mcp/work-assistant-mcp/logs
 
 jira:
-  # Only these statuses are eligible for jira_get_latest_assigned_issue.
+  # Required when `jira` is enabled. Only issues in these exact Jira statuses are eligible for jira_get_latest_assigned_issue.
   # Run `uv run python scripts/inspect_jira_issue_workflow.py IOS-123` first to inspect visible Jira statuses.
   latest_assigned_statuses:
     - 重新打开
     - ToDo
-  # Target Jira status for jira_start_issue.
+  # Required when `jira` is enabled. Target Jira status for jira_start_issue.
   # The server selects the currently available transition whose destination status matches this value.
   start_target_status: 已接受
-  # Target Jira status for jira_resolve_issue.
+  # Required when `jira` is enabled. Target Jira status for jira_resolve_issue.
   # The server selects the currently available transition whose destination status matches this value.
   resolve_target_status: 已解决
   attachments:
-    # Cap how many Jira images are returned to the model for a single issue.
+    # Optional. Cap how many Jira images are returned to the model for a single issue.
     max_images: 5
-    # Cap the size of each returned image to avoid oversized tool responses.
+    # Optional. Cap the size of each returned image to avoid oversized tool responses.
     max_bytes_per_image: 1048576

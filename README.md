@@ -12,7 +12,11 @@ Tools are grouped by plugin. Each plugin is enabled or disabled as a unit in `co
 
 ## Configuration
 
-Two files are used. Copy `.env.example` to `.env` for credentials, and edit `config.yaml` for everything else.
+Configuration is intentionally split by sensitivity, not by override priority.
+
+- `.env` contains sensitive credentials only.
+- `config.yaml` contains non-sensitive behavior and plugin settings only.
+- A single setting should be defined in one place only. This project does not use environment variables to override `config.yaml`.
 
 To disable a plugin and all its tools, comment out its name in `plugins.enabled` in `config.yaml`.
 
@@ -108,12 +112,17 @@ logging:
   level: info   # debug | info | warning | error
 ```
 
-Environment variables take priority over `config.yaml` — useful for CI/CD or Docker:
+- `server.transport` is required.
+- `server.host` and `server.port` are only required when `server.transport` is `streamable-http`.
+- `server.name` and `server.instructions` are optional metadata for MCP clients.
+- `logging.dir` is optional and defaults to `logs`.
+- `logging.level` is optional and must be one of `debug`, `info`, `warning`, or `error`.
 
-| Variable                   | Overrides       |
-| -------------------------- | --------------- |
-| `WORK_MCP_LOG_DIR`         | `logging.dir`   |
-| `WORK_MCP_LOG_LEVEL`       | `logging.level` |
+CLI flags still override server binding for the current process only:
+
+```bash
+uv run work-mcp --transport streamable-http --host 0.0.0.0 --port 8182
+```
 
 ## Adding a New Tool
 
@@ -147,13 +156,7 @@ If your MCP client starts servers from the current repository root, `cwd` can us
 uv run work-mcp
 ```
 
-Run in HTTP mode without changing `config.yaml`:
-
-```bash
-uv run work-mcp --transport streamable-http --host 0.0.0.0 --port 8182
-```
-
-Or use `make run`.
+Run in HTTP mode with the values defined in `config.yaml`, or pass CLI flags for a one-off override. `make run` uses CLI flags to start HTTP mode without editing your checked-in config.
 
 ## Validate Locally
 
