@@ -19,6 +19,7 @@ DEFAULT_HTTP_PORT = 8000
 DEFAULT_DB_PORT = 1433
 DEFAULT_DB_DRIVER = "ODBC Driver 18 for SQL Server"
 DEFAULT_DB_CONNECT_TIMEOUT_SECONDS = 5
+DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,17 @@ class ServerSettings:
     transport: str
     host: str | None
     port: int | None
+
+
+@dataclass(frozen=True)
+class StartupHealthcheckSettings:
+    enabled: bool
+    timeout_seconds: int
+
+
+@dataclass(frozen=True)
+class StartupSettings:
+    healthcheck: StartupHealthcheckSettings
 
 
 @dataclass(frozen=True)
@@ -50,6 +62,7 @@ class DatabaseSettings:
 class Settings:
     # server transport
     server: ServerSettings
+    startup: StartupSettings
     # sensitive — loaded from .env / environment
     dingtalk_webhook_url: str
     dingtalk_secret: str | None
@@ -106,6 +119,15 @@ def default_server_settings() -> ServerSettings:
     return ServerSettings(transport=DEFAULT_TRANSPORT, host=None, port=None)
 
 
+def default_startup_settings() -> StartupSettings:
+    return StartupSettings(
+        healthcheck=StartupHealthcheckSettings(
+            enabled=False,
+            timeout_seconds=DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS,
+        )
+    )
+
+
 def _read_enabled_plugins(yaml_cfg: dict[str, Any]) -> tuple[str, ...]:
     yaml_plugins = yaml_cfg.get("plugins", {})
     if not isinstance(yaml_plugins, dict):
@@ -146,6 +168,42 @@ def _read_log_search_settings(yaml_cfg: dict[str, Any]) -> LogSearchSettings | N
     )
 
 
+def _read_startup_settings(yaml_cfg: dict[str, Any]) -> StartupSettings:
+    yaml_startup = yaml_cfg.get("startup", {})
+    if not isinstance(yaml_startup, dict):
+        raise RuntimeError("Invalid startup section in config.yaml. Expected a mapping.")
+
+    yaml_healthcheck = yaml_startup.get("healthcheck", {})
+    if not isinstance(yaml_healthcheck, dict):
+        raise RuntimeError(
+            "Invalid startup.healthcheck in config.yaml. Expected a mapping."
+        )
+
+    raw_enabled = yaml_healthcheck.get("enabled", False)
+    if not isinstance(raw_enabled, bool):
+        raise RuntimeError(
+            "Invalid startup.healthcheck.enabled in config.yaml. Expected true/false."
+        )
+
+    raw_timeout_seconds = yaml_healthcheck.get(
+        "timeout_seconds",
+        DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS,
+    )
+    try:
+        timeout_seconds = int(raw_timeout_seconds)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "Invalid startup.healthcheck.timeout_seconds in config.yaml. Expected an integer."
+        ) from exc
+
+    return StartupSettings(
+        healthcheck=StartupHealthcheckSettings(
+            enabled=raw_enabled,
+            timeout_seconds=timeout_seconds,
+        )
+    )
+
+
 def _read_bool_env(name: str, default: bool) -> bool:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -174,6 +232,11 @@ def _read_int_env(name: str, default: int) -> int:
 
 def validate_settings(settings: Settings) -> None:
     errors: list[str] = []
+
+    if settings.startup.healthcheck.timeout_seconds <= 0:
+        errors.append(
+            "startup: startup.healthcheck.timeout_seconds must be greater than 0"
+        )
 
     if "dingtalk" in settings.enabled_plugins and not settings.dingtalk_webhook_url:
         errors.append(
@@ -252,6 +315,7 @@ def get_settings() -> Settings:
     yaml_cfg = load_yaml_config()
 
     server = default_server_settings()
+    startup = _read_startup_settings(yaml_cfg)
     enabled_plugins = _read_enabled_plugins(yaml_cfg)
     log_search = _read_log_search_settings(yaml_cfg)
 
@@ -314,6 +378,7 @@ def get_settings() -> Settings:
 
     settings = Settings(
         server=server,
+        startup=startup,
         dingtalk_webhook_url=webhook_url,
         dingtalk_secret=dingtalk_secret,
         jira_base_url=jira_base_url,

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from urllib.parse import parse_qs, urlsplit
 
-from work_mcp.config import ServerSettings, Settings
+from work_mcp.config import ServerSettings, Settings, default_startup_settings
 from work_mcp.server import _apply_cli_overrides, create_mcp, main
 
 _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
@@ -19,6 +19,7 @@ _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 def _make_settings(**overrides: object) -> Settings:
     defaults = dict(
         server=_DEFAULT_SERVER,
+        startup=default_startup_settings(),
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
         jira_base_url="https://jira.example.invalid",
@@ -235,5 +236,22 @@ def test_main_exits_cleanly_for_invalid_configuration(monkeypatch) -> None:
         main([])
     except SystemExit as exc:
         assert exc.code == "Error: Invalid configuration for enabled plugins"
+    else:
+        raise AssertionError("Expected SystemExit")
+
+
+def test_main_exits_cleanly_for_failed_startup_checks(monkeypatch) -> None:
+    monkeypatch.setattr("work_mcp.server.get_settings", lambda: _make_settings())
+    monkeypatch.setattr(
+        "work_mcp.server.run_startup_checks",
+        lambda _settings: (_ for _ in ()).throw(
+            RuntimeError("Startup dependency checks failed:\n- jira: connectivity check failed")
+        ),
+    )
+
+    try:
+        main([])
+    except SystemExit as exc:
+        assert exc.code == "Error: Startup dependency checks failed:\n- jira: connectivity check failed"
     else:
         raise AssertionError("Expected SystemExit")

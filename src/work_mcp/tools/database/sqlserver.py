@@ -24,6 +24,13 @@ WHERE state_desc = 'ONLINE'
 ORDER BY name
 """
 
+CONNECTIVITY_SQL = """
+SELECT
+    @@SERVERNAME AS server_name,
+    DB_NAME() AS database_name,
+    SYSTEM_USER AS login_name
+"""
+
 LIST_TABLES_SQL = """
 SELECT TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
@@ -274,3 +281,36 @@ def _format_pyodbc_error(exc: pyodbc.Error) -> str:
     if not parts:
         return str(exc)
     return " | ".join(parts)
+
+
+def probe_sqlserver_connectivity(
+    settings: DatabaseSettings,
+    *,
+    timeout_seconds: int,
+) -> dict[str, str]:
+    connection_string = SqlServerClient(settings)._connection_string(
+        settings.default_database
+    )
+    try:
+        with closing(
+            pyodbc.connect(
+                connection_string,
+                timeout=timeout_seconds,
+                autocommit=True,
+            )
+        ) as connection:
+            with closing(connection.cursor()) as cursor:
+                cursor.execute(CONNECTIVITY_SQL)
+                row = cursor.fetchone()
+    except pyodbc.Error as exc:
+        message = _format_pyodbc_error(exc)
+        raise RuntimeError(f"connectivity check failed: {message}") from exc
+
+    if row is None:
+        raise RuntimeError("connectivity check failed: SQL Server returned no rows.")
+
+    return {
+        "server_name": str(row[0] or ""),
+        "database_name": str(row[1] or ""),
+        "login_name": str(row[2] or ""),
+    }

@@ -117,6 +117,28 @@ class JiraClient:
             raise JiraApiError("Jira status category response did not contain a status category list.")
         return [item for item in payload if isinstance(item, dict)]
 
+    def get_server_info(self, *, timeout: int = JIRA_TIMEOUT_SECONDS) -> dict[str, Any]:
+        payload = self._request(
+            method="GET",
+            path="/rest/api/2/serverInfo",
+            timeout=timeout,
+        )
+        if not isinstance(payload, dict):
+            raise JiraApiError("Jira serverInfo response did not contain an object.")
+        return payload
+
+    def get_current_user(self, *, timeout: int = JIRA_TIMEOUT_SECONDS) -> JiraUser:
+        payload = self._request(
+            method="GET",
+            path="/rest/api/2/myself",
+            timeout=timeout,
+        )
+        user = JiraUser.from_api(payload)
+        identifiers = user.identifiers()
+        if not identifiers:
+            raise JiraApiError("Jira myself response did not contain a usable user identity.")
+        return user
+
     def transition_issue(self, issue_key: str, transition_id: str) -> None:
         self._request(
             method="POST",
@@ -128,14 +150,7 @@ class JiraClient:
         if self._current_user_identifiers is not None:
             return self._current_user_identifiers
 
-        payload = self._request(
-            method="GET",
-            path="/rest/api/2/myself",
-        )
-        user = JiraUser.from_api(payload)
-        identifiers = user.identifiers()
-        if not identifiers:
-            raise JiraApiError("Jira myself response did not contain a usable user identity.")
+        identifiers = self.get_current_user().identifiers()
         self._current_user_identifiers = identifiers
         return identifiers
 
@@ -153,3 +168,22 @@ class JiraClient:
             )
         except HttpRequestError as exc:
             raise JiraApiError(exc.message, status_code=exc.status_code) from exc
+
+
+def check_jira_connectivity(
+    settings: Settings,
+    *,
+    timeout_seconds: int,
+) -> dict[str, str]:
+    client = JiraClient(settings)
+    try:
+        server_info = client.get_server_info(timeout=timeout_seconds)
+        user = client.get_current_user(timeout=timeout_seconds)
+    except JiraApiError as exc:
+        raise RuntimeError(f"connectivity check failed: {exc.message}") from exc
+
+    return {
+        "deployment_type": str(server_info.get("deploymentType") or ""),
+        "version": str(server_info.get("version") or ""),
+        "username": user.username,
+    }

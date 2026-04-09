@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from work_mcp.config import DatabaseSettings, ServerSettings, Settings
+from work_mcp.config import (
+    DatabaseSettings,
+    ServerSettings,
+    Settings,
+    default_startup_settings,
+)
 from work_mcp.server import create_mcp
 from work_mcp.tools.database.base import (
     AbstractDatabaseClient,
@@ -13,6 +18,7 @@ from work_mcp.tools.database.base import (
     QueryResult,
     TableNotFoundError,
 )
+from work_mcp.tools.database.factory import check_database_connectivity
 from work_mcp.tools.database.sqlserver import SqlServerClient
 from work_mcp.tools.database.security import ReadOnlyViolation, validate_read_only_query
 from work_mcp.tools.database.service import DatabaseService
@@ -34,6 +40,7 @@ _DEFAULT_DATABASE = DatabaseSettings(
 def _make_settings(**overrides: object) -> Settings:
     defaults = dict(
         server=_DEFAULT_SERVER,
+        startup=default_startup_settings(),
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
         jira_base_url="https://jira.example.invalid",
@@ -143,7 +150,7 @@ def test_database_service_returns_structured_query_error() -> None:
         "success": False,
         "error_type": "query_error",
         "message": "Invalid column name 'bad_column'.",
-        "hint": "The query failed. Call db_get_table_schema to verify table and column names, then retry with a corrected SELECT statement.",
+        "hint": "The query failed. Call db_get_table_schema to verify table and column names, then retry with a corrected SELECT statement. Retry at most once; if still failing, stop and tell the user the error message above.",
     }
 
 
@@ -205,6 +212,11 @@ class _StubCursor:
     def fetchall(self) -> list[tuple[object, ...]]:
         return list(self._rows)
 
+    def fetchone(self) -> tuple[object, ...] | None:
+        if not self._rows:
+            return None
+        return self._rows[0]
+
     def fetchmany(self, size: int) -> list[tuple[object, ...]]:
         return list(self._rows[:size])
 
@@ -249,6 +261,32 @@ def test_sqlserver_client_reuses_connection_per_database(monkeypatch) -> None:
 
     assert client.list_databases() == ["app_db"]
     assert client.list_databases() == ["app_db"]
+    assert len(connect_calls) == 1
+
+
+def test_check_database_connectivity_uses_db_type_factory(monkeypatch) -> None:
+    connect_calls: list[str] = []
+    connection = _StubConnection(
+        rows=[("db-server-1", "master", "readonly_user")],
+        error_type=Exception,
+    )
+
+    def fake_connect(connection_string: str, **_: object) -> _StubConnection:
+        connect_calls.append(connection_string)
+        return connection
+
+    monkeypatch.setattr("work_mcp.tools.database.sqlserver.pyodbc.connect", fake_connect)
+
+    payload = check_database_connectivity(
+        _DEFAULT_DATABASE,
+        timeout_seconds=3,
+    )
+
+    assert payload == {
+        "server_name": "db-server-1",
+        "database_name": "master",
+        "login_name": "readonly_user",
+    }
     assert len(connect_calls) == 1
 
 

@@ -5,6 +5,13 @@ logging:
   # Optional. Minimum log severity to write. Allowed: debug, info, warning, error.
   level: info
 
+startup:
+  healthcheck:
+    # Optional. When enabled, startup probes live dependencies for enabled plugins before the MCP server starts.
+    enabled: true
+    # Optional. Shared timeout in seconds for each startup probe.
+    timeout_seconds: 10
+
 plugins:
   # Required. Enable plugins explicitly; only listed plugins register tools at startup.
   enabled:

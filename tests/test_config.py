@@ -199,6 +199,53 @@ logging:
     assert settings.log_level == "warning"
 
 
+def test_get_settings_disables_startup_healthcheck_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins:
+  enabled: []
+""".strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    settings = config_module.get_settings()
+
+    assert settings.startup.healthcheck.enabled is False
+    assert (
+        settings.startup.healthcheck.timeout_seconds
+        == config_module.DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS
+    )
+
+
+def test_get_settings_reads_startup_healthcheck_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins:
+  enabled: []
+startup:
+  healthcheck:
+    enabled: true
+    timeout_seconds: 7
+""".strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    settings = config_module.get_settings()
+
+    assert settings.startup.healthcheck.enabled is True
+    assert settings.startup.healthcheck.timeout_seconds == 7
+
+
 def test_get_settings_uses_stdio_by_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -257,6 +304,28 @@ logging: logs
     monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
 
     with pytest.raises(RuntimeError, match="Invalid logging section"):
+        config_module.get_settings()
+
+
+def test_get_settings_rejects_invalid_startup_healthcheck_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins:
+  enabled: []
+startup:
+  healthcheck:
+    enabled: true
+    timeout_seconds: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="startup.healthcheck.timeout_seconds"):
         config_module.get_settings()
 
 

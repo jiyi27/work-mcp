@@ -22,6 +22,22 @@ Configuration is intentionally split by sensitivity, not by override priority.
 
 To disable a plugin and all its tools, comment out its name in `plugins.enabled` in `config.yaml`.
 
+### Startup Health Checks
+
+Runtime dependency probes are controlled in `config.yaml`:
+
+```yaml
+startup:
+  healthcheck:
+    enabled: false
+    timeout_seconds: 10
+```
+
+- `startup.healthcheck.enabled` defaults to `false`. When enabled, server startup fails fast if a supported plugin's live dependency check fails.
+- `startup.healthcheck.timeout_seconds` applies to each startup probe and defaults to `10`.
+- This repository's checked-in `config.yaml` enables startup health checks for local use.
+- Today, dynamic startup checks are implemented for `jira` and `database`. Other plugins still use static config validation only.
+
 ### Database
 
 Configure a read-only SQL Server account for live debugging queries.
@@ -44,6 +60,7 @@ DB_CONNECT_TIMEOUT_SECONDS=5
 - `DB_NAME` is the default database used for connection bootstrap. The tools can still inspect other visible databases.
 - `DB_DRIVER` must match an installed ODBC driver on the host machine. For SQL Server, install the Microsoft ODBC Driver first.
 - `DB_TRUST_SERVER_CERTIFICATE=true` is only appropriate for environments where you intentionally bypass certificate validation.
+- When `startup.healthcheck.enabled=true`, the database plugin performs a live startup probe against the configured database driver and executes a lightweight SQL query against `DB_NAME`. Startup stops if the connection or query fails.
 
 **2. Enable in `config.yaml`:**
 
@@ -95,6 +112,7 @@ JIRA_PROJECT_KEY=PROJECT1
 
 - `JIRA_API_TOKEN` — create one at your Jira profile → Personal Access Tokens.
 - `JIRA_PROJECT_KEY` — the short key for the project this server is allowed to query and update (e.g. `IOS`, `PROJECT1`).
+- When `startup.healthcheck.enabled=true`, the Jira plugin probes `GET /rest/api/2/serverInfo` and `GET /rest/api/2/myself` using the configured base URL and token. Startup stops if Jira is unreachable or authentication fails.
 
 **2. Discover your workflow status names:**
 
