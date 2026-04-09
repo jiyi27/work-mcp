@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from ...hints import STOP_AND_NOTIFY_USER_INSTRUCTION
+from ...hints import (
+    STOP_AND_NOTIFY_USER_INSTRUCTION,
+    STOP_NOTIFY_AND_ASK_USER_HOW_TO_PROCEED_INSTRUCTION,
+)
 
 TOOL_DB_LIST_DATABASES = "db_list_databases"
 TOOL_DB_LIST_TABLES = "db_list_tables"
@@ -39,18 +42,28 @@ Use this to inspect live data during debugging after confirming the table schema
 """
 
 HINT_DATABASE_NOT_FOUND = (
-    f"The database was not found or is not accessible. Call {TOOL_DB_LIST_DATABASES} "
-    "to get a valid database name, then retry."
+    "The database was not found or is not accessible. Before retrying: "
+    "(1) check the source code or ORM models to confirm the actual database name used at runtime — "
+    "it may differ from the logical or environment name; "
+    f"(2) call {TOOL_DB_LIST_DATABASES} to see what databases are visible to the configured account. "
+    "If the database still cannot be found after retrying with a confirmed name, "
+    f"{STOP_NOTIFY_AND_ASK_USER_HOW_TO_PROCEED_INSTRUCTION}"
 )
 
 HINT_TABLE_NOT_FOUND = (
-    "The table '{table}' was not found in database '{database}'. "
-    f"Call {TOOL_DB_LIST_TABLES} with that database to get valid table names, then retry."
+    "The table '{{table}}' was not found in database '{{database}}'. Before retrying: "
+    "(1) check the source code or ORM models to confirm the actual table name used at runtime — "
+    "the ORM model class name often differs from the underlying SQL table name; "
+    "(2) verify you are querying the correct database for this data; "
+    f"(3) call {TOOL_DB_LIST_TABLES} to see the tables that actually exist. "
+    "If the table still cannot be found after retrying with a confirmed name, "
+    f"{STOP_NOTIFY_AND_ASK_USER_HOW_TO_PROCEED_INSTRUCTION}"
 )
 
 HINT_QUERY_ERROR = (
     f"The query failed. Call {TOOL_DB_GET_TABLE_SCHEMA} to verify table and column names, "
-    "then retry with a corrected SELECT statement."
+    "then retry with a corrected SELECT statement. "
+    "Retry at most once; if still failing, stop and tell the user the error message above."
 )
 
 HINT_NO_DATABASES = (
