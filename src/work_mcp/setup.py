@@ -487,6 +487,23 @@ def has_errors(results: list[DiagnosticResult]) -> bool:
     return any(result.level == "error" for result in results)
 
 
+def connectivity_hint(project_root: Path = PROJECT_ROOT) -> str:
+    yaml_path = yaml_config_path(project_root)
+    try:
+        yaml_values = load_existing_yaml(yaml_path)
+    except RuntimeError:
+        return ""
+    plugin_names = _coerce_enabled_plugins(yaml_values.get("plugins"))
+    items = []
+    if OPTIONAL_PLUGIN_DATABASE in plugin_names:
+        items.append("数据库是否从当前机器可以连通")
+    if OPTIONAL_PLUGIN_JIRA in plugin_names:
+        items.append("Jira 是否从当前机器可以连通")
+    if not items:
+        return ""
+    return "请检查：" + "、".join(items) + "。"
+
+
 def _coerce_enabled_plugins(raw_plugins: Any) -> list[str]:
     if not isinstance(raw_plugins, dict):
         return []

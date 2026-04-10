@@ -13,6 +13,7 @@ from work_mcp.setup import (
     current_value_label,
     default_driver_for_db,
     default_port_for_db,
+    connectivity_hint,
     diagnose,
     env_file_path,
     has_errors,
@@ -243,7 +244,7 @@ def collect_sqlserver_answers(existing_env: dict[str, str], db_type: str) -> dic
     if db_type != DB_TYPE_SQLSERVER:
         return {
             "driver": "",
-            "trust_server_certificate": False,
+            "trust_server_certificate": True,
         }
 
     return {
@@ -255,7 +256,7 @@ def collect_sqlserver_answers(existing_env: dict[str, str], db_type: str) -> dic
                 validator=validate_sqlserver_driver,
             )
         ),
-        "trust_server_certificate": False,
+        "trust_server_certificate": True,
     }
 
 
@@ -333,7 +334,7 @@ def _default_database_answers() -> dict[str, object]:
         "password": "",
         "database_name": "",
         "driver": "",
-        "trust_server_certificate": False,
+        "trust_server_certificate": True,
         "connect_timeout_seconds": 5,
     }
 
@@ -421,45 +422,43 @@ def main() -> None:
     env_path = env_file_path(project_root)
     yaml_path = project_root / "config.yaml"
 
-    ensure_uv_available()
-    sync_dependencies(project_root)
-    env_type = prompt_environment_type()
-
-    should_modify_existing = True
-    if env_type != ENV_TYPE_REMOTE:
-        should_modify_existing = prompt_should_modify_existing(env_path, yaml_path)
-
-    if not should_modify_existing:
-        print("已跳过配置修改。")
-        print("运行 `uv run work-mcp` 启动服务。")
-        return
-
     try:
-        answers = collect_answers(env_type, project_root)
+        ensure_uv_available()
+        sync_dependencies(project_root)
+        env_type = prompt_environment_type()
+
+        should_modify_existing = True
+        if env_type != ENV_TYPE_REMOTE:
+            should_modify_existing = prompt_should_modify_existing(env_path, yaml_path)
+
+        if should_modify_existing:
+            answers = collect_answers(env_type, project_root)
+            existing_env = parse_env_file(env_path)
+            existing_yaml = load_existing_yaml(yaml_path)
+            write_env_file(env_path, build_updated_env(existing_env, answers))
+            write_yaml_file(yaml_path, build_updated_yaml(existing_yaml, answers))
+            print("配置保存成功。")
+        else:
+            print("已跳过配置修改，直接进行检查。")
+
+        print("\n开始执行配置检查...")
+        results = diagnose(project_root)
+        for result in results:
+            print(f"[{result.level}] {result.message}")
+
+        if has_errors(results):
+            hint = connectivity_hint(project_root)
+            msg = "配置校验未通过。请重新运行 `make init` 修正配置。"
+            if hint:
+                msg += f"\n{hint}"
+            raise SystemExit(msg)
+
+        print("运行 `uv run work-mcp` 启动服务。")
     except RuntimeError as exc:
         raise SystemExit(f"错误: {exc}") from None
     except KeyboardInterrupt:
         print("\n已取消初始化。")
         raise SystemExit(1) from None
-
-    existing_env = parse_env_file(env_path)
-    existing_yaml = load_existing_yaml(yaml_path)
-
-    write_env_file(env_path, build_updated_env(existing_env, answers))
-    write_yaml_file(yaml_path, build_updated_yaml(existing_yaml, answers))
-
-    print("\n开始执行配置检查...")
-    results = diagnose(project_root)
-    for result in results:
-        print(f"[{result.level}] {result.message}")
-
-    if has_errors(results):
-        raise SystemExit(
-            "配置已保存，但校验未通过。请重新运行 `make init` 修正配置。"
-        )
-
-    print("配置保存成功。")
-    print("运行 `uv run work-mcp` 启动服务。")
 
 
 if __name__ == "__main__":

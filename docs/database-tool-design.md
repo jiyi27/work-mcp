@@ -8,7 +8,7 @@ correctness and safety over premature abstraction.
 ## Safety Boundary
 
 These tools do not and cannot guarantee read-only behavior by SQL parsing alone.
-The hard safety boundary is the database account:
+The hard safety boundary is the database account
 
 - The configured database user must be restricted to read-only access.
 - Tool-layer SQL validation is best-effort defense in depth.
@@ -21,29 +21,29 @@ Do not describe the tool layer as a guarantee against state changes.
 ```text
 src/work_mcp/tools/database/
 ├── __init__.py
-├── register.py       # MCP tool registration only
-├── service.py        # argument validation, error mapping, response shaping
-├── base.py           # abstract client contract
-├── factory.py        # select concrete client from config
-├── sqlserver.py      # SQL Server implementation
-├── security.py       # best-effort read-only validation
-└── strings.py        # tool names, descriptions, reusable hints
+├── register.py # MCP tool registration only
+├── service.py # argument validation, error mapping, response shaping
+├── base.py # abstract client contract
+├── factory.py # select concrete client from config
+├── sqlserver.py # SQL Server implementation
+├── security.py # best-effort read-only validation
+└── strings.py # tool names, descriptions, reusable hints
 ```
 
 ## Layer Responsibilities
 
 ```text
-register.py          thin MCP wrappers and parameter annotations
+register.py thin MCP wrappers and parameter annotations
     │
-service.py           validate input, call client/security, map failures
+service.py validate input, call client/security, map failures
     │
-security.py          best-effort validation for single-statement SELECT queries
+security.py best-effort validation for single-statement SELECT queries
     │
-base.py              engine-neutral client interface
+base.py engine-neutral client interface
     ▲
-factory.py           choose concrete client
+factory.py choose concrete client
     │
-sqlserver.py         SQL Server implementation
+sqlserver.py SQL Server implementation
 ```
 
 `register.py` should stay minimal, matching the existing plugin pattern in this
@@ -96,7 +96,7 @@ Add it to `Settings` as `database: DatabaseSettings | None`.
 
 ### Validation Rules
 
-When `"database"` is in `enabled_plugins`:
+When `"database"` is in `enabled_plugins`
 
 - `DB_TYPE` must be present and supported.
 - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` must be non-empty.
@@ -116,7 +116,7 @@ Follow [docs/tool-design.md](/Users/david/codes/mcp/work-mcp/docs/tool-design.md
 
 ## Security Model
 
-`security.py` performs best-effort validation for `execute_query`:
+`security.py` performs best-effort validation for `execute_query`
 
 1. Parse the submitted SQL with `sqlparse`.
 2. Reject multiple statements.
@@ -163,32 +163,32 @@ SQL in `register.py`.
 
 ### `db_list_databases`
 
-Returns:
+Returns
 
 ```json
 {
-  "success": true,
+  "success": true, 
   "databases": ["app_db", "reporting_db"]
 }
 ```
 
-Failures:
+Failures
 
 - `internal_error`: known connection, authentication, driver, or upstream DB failure.
 
 ### `db_list_tables`
 
-Returns:
+Returns
 
 ```json
 {
-  "success": true,
-  "database": "app_db",
+  "success": true, 
+  "database": "app_db", 
   "tables": ["orders", "users"]
 }
 ```
 
-Failures:
+Failures
 
 - `invalid_argument`: empty `database`
 - `database_not_found`: database does not exist or is not accessible
@@ -196,20 +196,20 @@ Failures:
 
 ### `db_get_table_schema`
 
-Returns:
+Returns
 
 ```json
 {
-  "success": true,
-  "database": "app_db",
-  "table": "orders",
+  "success": true, 
+  "database": "app_db", 
+  "table": "orders", 
   "columns": [
     {"column": "id", "type": "int", "nullable": false, "primary_key": true}
   ]
 }
 ```
 
-Failures:
+Failures
 
 - `invalid_argument`: empty `database` or `table`
 - `database_not_found`
@@ -218,26 +218,26 @@ Failures:
 
 ### `db_execute_query`
 
-Returns:
+Returns
 
 ```json
 {
-  "success": true,
-  "database": "app_db",
-  "columns": ["id", "status"],
-  "rows": [[1, "pending"]],
-  "row_count": 1,
+  "success": true, 
+  "database": "app_db", 
+  "columns": ["id", "status"], 
+  "rows": [[1, "pending"]], 
+  "row_count": 1, 
   "truncated": false
 }
 ```
 
-Rules:
+Rules
 
 - Only a single `SELECT` statement is accepted.
 - `limit` defaults to 5 and must be between 1 and 50.
 - Row limiting is enforced by the concrete client.
 
-Failures:
+Failures
 
 - `invalid_argument`: empty `database` or `sql`, or invalid `limit`
 - `readonly_violation`: rejected by best-effort SQL validation
