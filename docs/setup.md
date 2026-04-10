@@ -1,12 +1,15 @@
-# 配置与启动
+# 配置、启动与部署
 
-本文档引导你从零完成 work-mcp 的环境搭建、配置和启动。
+本文档说明如何初始化 `work-mcp`，以及如何按两种运行方式部署：
+
+- 本地 `stdio` 模式：给本机 MCP 客户端直接拉起，默认只启用 `jira`
+- 远程 HTTP 模式：部署在服务器上，通过 `/mcp` 提供服务，默认只启用 `database` 和 `log_search`
 
 ---
 
 ## 1. 安装
 
-**前置条件：** [uv](https://docs.astral.sh/uv/)
+前置条件：安装 [uv](https://docs.astral.sh/uv/)
 
 ```bash
 git clone <你的仓库地址> work-mcp
@@ -14,9 +17,9 @@ cd work-mcp
 uv sync
 ```
 
-### SQL Server 额外依赖 (MySQL 用户跳过此步)
+### SQL Server 额外依赖
 
-使用 `database` 插件且数据库类型为 SQL Server 时，需要在主机上安装 Microsoft ODBC Driver：
+仅在启用 `database` 且数据库类型为 SQL Server 时需要安装 Microsoft ODBC Driver。
 
 ```bash
 # macOS
@@ -42,52 +45,99 @@ sudo ACCEPT_EULA=Y yum install -y msodbcsql18
 
 ---
 
-## 2. 交互式配置（推荐）
+## 2. 初始化配置
 
-运行向导，自动生成 `.env` 和 `config.yaml`：
+运行：
 
 ```bash
 make init
 ```
 
-向导会依次询问是否启用各插件，并收集对应凭据：
+初始化向导会先问当前运行环境：
 
-- `database` → 数据库类型、主机、端口、用户名、密码
-- `log_search` → 日志根目录（绝对路径）
-- `dingtalk` → Webhook URL 和签名密钥（可选）
-- `jira` → Jira 实例地址、API Token、项目 key
+- `1. 远程服务器`
+- `2. 本地`
 
-完成后生成两个文件：
+两种模式的行为现在是固定的。
 
-| 文件 | 内容 |
-|------|------|
-| `.env` | 数据库密码、Token 等敏感凭据 |
-| `config.yaml` | 插件开关、日志级别等非敏感配置 |
+### 本地模式
+
+本地模式会：
+
+- 只启用 `jira`
+- 自动移除 `database`、`log_search`、`dingtalk`
+- 清理这些已移除插件对应的 `.env` 凭据和 `config.yaml` 配置段
+
+向导会收集：
+
+- `JIRA_BASE_URL`
+- `JIRA_API_TOKEN`
+- `JIRA_PROJECT_KEY`
+
+生成结果：
+
+- `.env`：保存 Jira 凭据
+- `config.yaml`：只保留 `plugins.enabled: [jira]`，并写入 Jira 默认状态占位值
+
+### 远程服务器模式
+
+远程模式会：
+
+- 只启用 `database` 和 `log_search`
+- 自动移除 `jira`、`dingtalk`
+- 清理这些已移除插件对应的 `.env` 凭据和 `config.yaml` 配置段
+
+向导会收集：
+
+- `database`：数据库类型、主机、端口、用户名、密码、默认数据库名、连接超时
+- SQL Server 额外收集：`DB_DRIVER`
+- `log_search`：日志根目录绝对路径
+
+生成结果：
+
+- `.env`：保存数据库凭据
+- `config.yaml`：启用 `database` 和 `log_search`
 
 ---
 
-## 3. 校准 Jira 工作流状态（启用 Jira 时）
+## 3. 校准 Jira 工作流状态
 
-`make init` 会在 `config.yaml` 中写入默认的状态名称占位值，这些名称需要替换为你的 Jira 项目实际使用的状态名称。
+仅在本地模式启用 `jira` 时需要这一步。
 
-**查询当前项目的状态名称：**
+`make init` 会在 `config.yaml` 中写入默认占位值：
+
+```yaml
+jira:
+  latest_assigned_statuses:
+    - 重新打开
+    - ToDo
+  start_target_status: 已接受
+  resolve_target_status: 已解决
+  attachments:
+    max_images: 5
+    max_bytes_per_image: 1048576
+```
+
+这些值通常需要替换成你当前 Jira 项目里实际存在的状态名。
+
+先查询实际状态：
 
 ```bash
 uv run python scripts/inspect_jira_issue_workflow.py <ISSUE-KEY>
 ```
 
-用输出结果修改 `config.yaml` 中的对应值：
+再修改 `config.yaml`：
 
 ```yaml
 jira:
   latest_assigned_statuses:
-    - 待处理      # jira_get_latest_assigned_issue 返回这些状态的 issue
+    - 待处理
     - 处理中
-  start_target_status: 处理中   # jira_start_issue 流转目标状态
-  resolve_target_status: 已解决 # jira_resolve_issue 流转目标状态
+  start_target_status: 处理中
+  resolve_target_status: 已解决
 ```
 
-状态名称必须与 Jira 工作流完全一致。字段详细说明见 [`config.example.yaml`](../config.example.yaml)。
+状态名称必须与 Jira 工作流中的 status 名称完全一致。字段详细说明见 [`config.example.yaml`](../config.example.yaml)。
 
 ---
 
@@ -97,13 +147,39 @@ jira:
 make doctor
 ```
 
-输出每项检查的结果（`[ok]` / `[warn]` / `[error]`）。存在 `[error]` 时服务无法正常启动，根据提示修正后重新运行。
+输出每项检查结果：
+
+- `[ok]`
+- `[warn]`
+- `[error]`
+
+存在 `[error]` 时，服务无法正常启动，需要先修正配置。
 
 ---
 
-## 5. 连接到 Agent
+## 5. 本地部署：stdio 模式
 
-在 MCP 客户端（如 Claude Desktop、Cursor）的配置中添加：
+适用场景：
+
+- 你的 MCP 客户端运行在本机
+- 由客户端直接拉起 `work-mcp`
+- 主要使用 Jira 工具
+
+### 启动方式
+
+```bash
+uv run work-mcp
+```
+
+或：
+
+```bash
+make run-stdio
+```
+
+默认就是 `stdio` 模式。
+
+### MCP 客户端配置示例
 
 ```json
 {
@@ -117,32 +193,94 @@ make doctor
 }
 ```
 
-这会以 `stdio` 模式启动服务，是本地 Agent 集成的默认方式。
+这类配置适用于会在本地直接启动 MCP 进程的客户端。
 
 ---
 
-## 6. 直接运行（调试用）
+## 6. 远程部署：HTTP 模式
+
+适用场景：
+
+- `work-mcp` 部署在服务器
+- 客户端通过网络访问
+- 主要提供数据库查询和日志检索能力
+
+### 启动方式
+
+推荐直接使用：
 
 ```bash
-# stdio 模式（供 MCP 客户端直接调用）
-uv run work-mcp
+make run
+```
 
-# HTTP 模式（供调试或远程访问）
-make run                        # 默认监听 0.0.0.0:8182
+默认监听：
+
+- `HOST=0.0.0.0`
+- `PORT=8182`
+
+也可以显式指定：
+
+```bash
 make run HOST=127.0.0.1 PORT=9000
 ```
 
-HTTP 模式启动后，MCP 端点地址为 `http://<host>:<port>/mcp`。
+对应的 MCP 端点为：
+
+```text
+http://<host>:<port>/mcp
+```
+
+例如：
+
+```text
+http://127.0.0.1:8182/mcp
+```
+
+### 直接用命令行启动
+
+```bash
+uv run work-mcp --transport streamable-http --host 0.0.0.0 --port 8182
+```
+
+如果你直接写：
+
+```bash
+uv run work-mcp --transport streamable-http
+```
+
+而没有传 `--host` 和 `--port`，代码里的默认值是：
+
+- `127.0.0.1`
+- `8000`
+
+### 客户端接入
+
+支持 Streamable HTTP 的 MCP 客户端，直接把服务地址指向：
+
+```text
+http://<server-host>:<port>/mcp
+```
+
+客户端具体配置格式取决于客户端本身，但目标地址就是这个 `/mcp` 端点。
 
 ---
 
-## 附录：手动配置文件
+## 7. 手动配置文件
 
-不想使用 `make init` 时，可以手动创建配置文件：
+如果不使用 `make init`，可以手动初始化：
 
 ```bash
 cp .env.example .env
 cp config.example.yaml config.yaml
 ```
 
-然后编辑两个文件，按需填写。所有字段的说明见 [`config.example.yaml`](../config.example.yaml)。
+然后按需编辑两个文件。
+
+注意：
+
+- `.env` 只放敏感凭据
+- `config.yaml` 只放非敏感配置
+- 如果你走本地模式，建议只保留 `jira`
+- 如果你走远程模式，建议只保留 `database` 和 `log_search`
+
+所有字段说明见 [`config.example.yaml`](../config.example.yaml)。

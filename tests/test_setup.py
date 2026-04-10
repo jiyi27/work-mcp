@@ -37,29 +37,68 @@ def _answers(**overrides: object) -> SetupAnswers:
     return SetupAnswers(**defaults)  # type: ignore[arg-type]
 
 
-def test_build_updated_env_for_mysql_removes_sqlserver_and_dingtalk_keys() -> None:
+def test_build_updated_env_keeps_only_enabled_plugin_credentials() -> None:
     existing = {
         "DB_TYPE": "sqlserver",
+        "DB_HOST": "db.example.internal",
+        "DB_PORT": "1433",
+        "DB_USER": "readonly_user",
+        "DB_PASSWORD": "secret",
+        "DB_NAME": "master",
         "DB_DRIVER": "ODBC Driver 18 for SQL Server",
         "DB_TRUST_SERVER_CERTIFICATE": "true",
         "DINGTALK_WEBHOOK_URL": "https://example.invalid/webhook",
         "DINGTALK_SECRET": "secret",
+        "JIRA_BASE_URL": "https://jira.example.invalid",
         "JIRA_API_TOKEN": "keep-me",
+        "JIRA_PROJECT_KEY": "IOS",
     }
 
     updated = build_updated_env(existing, _answers())
 
     assert updated["DB_TYPE"] == "mysql"
     assert updated["DB_PORT"] == "3306"
+    assert updated["DB_HOST"] == "db.example.internal"
     assert "DB_DRIVER" not in updated
     assert "DB_TRUST_SERVER_CERTIFICATE" not in updated
     assert "DINGTALK_WEBHOOK_URL" not in updated
-    assert updated["JIRA_API_TOKEN"] == "keep-me"
+    assert "JIRA_API_TOKEN" not in updated
 
 
-def test_build_updated_yaml_sets_supported_plugins_and_preserves_existing_sections() -> None:
+def test_build_updated_env_removes_database_and_dingtalk_when_only_jira_is_enabled() -> None:
+    existing = {
+        "DB_TYPE": "mysql",
+        "DB_HOST": "db.example.internal",
+        "DB_PORT": "3306",
+        "DB_USER": "readonly_user",
+        "DB_PASSWORD": "secret",
+        "DB_NAME": "app_db",
+        "DINGTALK_WEBHOOK_URL": "https://example.invalid/webhook",
+        "DINGTALK_SECRET": "secret",
+    }
+
+    updated = build_updated_env(
+        existing,
+        _answers(
+            enable_database=False,
+            enable_log_search=False,
+            enable_jira=True,
+            jira_base_url="https://jira.example.invalid",
+            jira_api_token="jira-token",
+            jira_project_key="IOS",
+        ),
+    )
+
+    assert "DB_TYPE" not in updated
+    assert "DINGTALK_WEBHOOK_URL" not in updated
+    assert updated["JIRA_BASE_URL"] == "https://jira.example.invalid"
+    assert updated["JIRA_API_TOKEN"] == "jira-token"
+    assert updated["JIRA_PROJECT_KEY"] == "IOS"
+
+def test_build_updated_yaml_replaces_enabled_plugins_and_removes_disabled_sections() -> None:
     existing_yaml = {
         "plugins": {"enabled": ["jira", "database"]},
+        "log_search": {"log_base_dir": "/tmp/existing-logs"},
         "jira": {"start_target_status": "In Progress"},
     }
 
@@ -67,7 +106,7 @@ def test_build_updated_yaml_sets_supported_plugins_and_preserves_existing_sectio
 
     assert updated["plugins"]["enabled"] == ["database", "log_search", "dingtalk"]
     assert updated["log_search"]["log_base_dir"] == "/tmp/work-logs"
-    assert updated["jira"] == {"start_target_status": "In Progress"}
+    assert "jira" not in updated
 
 
 def test_build_updated_yaml_adds_default_jira_config_when_enabled() -> None:
@@ -97,7 +136,7 @@ def test_build_updated_yaml_allows_disabling_database_and_log_search() -> None:
     )
 
     assert updated["plugins"]["enabled"] == []
-    assert updated["log_search"] == {"log_base_dir": "/tmp/existing-logs"}
+    assert "log_search" not in updated
 
 
 def test_diagnose_reports_success_for_valid_mysql_configuration(

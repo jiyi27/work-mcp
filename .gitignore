@@ -15,6 +15,7 @@ dist/
 htmlcov/
 uv.lock
 .env
+config.yaml
 logs/
 *.log
 *.bak

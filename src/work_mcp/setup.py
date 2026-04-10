@@ -124,6 +124,9 @@ def load_existing_yaml(path: Path) -> dict[str, Any]:
 
 def build_updated_env(existing_env: dict[str, str], answers: SetupAnswers) -> dict[str, str]:
     updated = dict(existing_env)
+    for key in ENV_KEYS_MANAGED_BY_INIT:
+        updated.pop(key, None)
+
     if answers.enable_database:
         updated["DB_TYPE"] = answers.db_type
         updated["DB_HOST"] = answers.host
@@ -138,16 +141,9 @@ def build_updated_env(existing_env: dict[str, str], answers: SetupAnswers) -> di
             updated["DB_TRUST_SERVER_CERTIFICATE"] = format_bool(
                 answers.trust_server_certificate
             )
-        else:
-            updated.pop("DB_DRIVER", None)
-            updated.pop("DB_TRUST_SERVER_CERTIFICATE", None)
-
     if answers.enable_dingtalk:
         updated["DINGTALK_WEBHOOK_URL"] = answers.dingtalk_webhook_url
         updated["DINGTALK_SECRET"] = answers.dingtalk_secret
-    else:
-        updated.pop("DINGTALK_WEBHOOK_URL", None)
-        updated.pop("DINGTALK_SECRET", None)
 
     if answers.enable_jira:
         updated["JIRA_BASE_URL"] = answers.jira_base_url
@@ -187,6 +183,8 @@ def build_updated_yaml(existing_yaml: dict[str, Any], answers: SetupAnswers) -> 
             log_search_section = {}
         log_search_section["log_base_dir"] = answers.log_base_dir
         updated["log_search"] = log_search_section
+    else:
+        updated.pop("log_search", None)
 
     if answers.enable_jira:
         updated["jira"] = {
@@ -198,6 +196,8 @@ def build_updated_yaml(existing_yaml: dict[str, Any], answers: SetupAnswers) -> 
                 "max_bytes_per_image": DEFAULT_JIRA_ATTACHMENT_MAX_BYTES,
             },
         }
+    else:
+        updated.pop("jira", None)
 
     return updated
 

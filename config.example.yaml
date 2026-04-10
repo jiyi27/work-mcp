@@ -1,44 +1,46 @@
 # =============================================================================
-# config.example.yaml — work-mcp 配置参考
+# config.example.yaml — work-mcp configuration reference
 #
-# 将此文件复制为 config.yaml 并按需修改。
-# 敏感凭据（密码、Token）写在 .env 中，不在此文件中。
+# Copy this file to config.yaml and modify as needed.
+# Sensitive credentials (passwords, tokens) go in .env, not here.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# 日志
+# Logging
 # -----------------------------------------------------------------------------
 logging:
-  # 日志目录。相对路径从进程工作目录解析（`logs` 即 `./logs`）。
-  # 也支持绝对路径，如 /var/log/work-mcp。
-  # 默认: logs
+  # Log directory. Relative paths are resolved from the process working directory
+  # (`logs` means `./logs`). Absolute paths are also supported, e.g. /var/log/work-mcp.
+  # Default: logs
   dir: logs
 
-  # 日志级别。可选值: debug | info | warning | error
-  # 默认: info
+  # Log level. Options: debug | info | warning | error
+  # Default: info
   level: info
 
 
 # -----------------------------------------------------------------------------
-# 启动健康检查
+# Startup health checks
 # -----------------------------------------------------------------------------
 startup:
   healthcheck:
-    # 服务启动时是否对已启用插件的外部依赖做连通性探测。
-    # 启用后若探测失败则服务启动中止，帮助提前发现配置错误。
-    # 目前支持探测的插件: jira、database；其他插件仅做静态配置校验。
-    # 默认: false
+    # Whether to probe external dependencies of enabled plugins on startup.
+    # When enabled, the server will abort startup if any probe fails,
+    # helping catch configuration errors early.
+    # Currently supported: jira, database. Other plugins only do static config validation.
+    # Default: false
     enabled: false
 
-    # 每个探测的超时秒数。
-    # 默认: 10
+    # Timeout in seconds for each probe.
+    # Default: 10
     timeout_seconds: 10
 
 
 # -----------------------------------------------------------------------------
-# 插件开关
-# 只有列在此处的插件才会注册工具。注释掉某行即可禁用该插件的全部工具。
-# 可选值: database | dingtalk | jira | log_search
+# Plugin toggles
+# Only plugins listed here will have their tools registered.
+# Comment out a line to disable all tools from that plugin.
+# Options: database | dingtalk | jira | log_search
 # -----------------------------------------------------------------------------
 plugins:
   enabled:
@@ -49,43 +51,46 @@ plugins:
 
 
 # -----------------------------------------------------------------------------
-# 插件: log_search
-# 启用条件: plugins.enabled 包含 "log_search"
+# Plugin: log_search
+# Required: plugins.enabled contains "log_search"
 # -----------------------------------------------------------------------------
 log_search:
-  # 日志根目录（绝对路径）。工具只能访问此目录下的文件，目录必须已存在。
-  # 必填
+  # Absolute path to the log root directory. Tools can only access files under
+  # this directory, which must already exist.
+  # Required
   log_base_dir: /absolute/path/to/logs
 
 
 # -----------------------------------------------------------------------------
-# 插件: jira
-# 启用条件: plugins.enabled 包含 "jira"
-# 凭据 (JIRA_BASE_URL / JIRA_API_TOKEN / JIRA_PROJECT_KEY) 写在 .env 中。
+# Plugin: jira
+# Required: plugins.enabled contains "jira"
+# Credentials (JIRA_BASE_URL / JIRA_API_TOKEN / JIRA_PROJECT_KEY) go in .env.
 #
-# 状态名称必须与 Jira 工作流中的 status 名称完全一致（不是 category 名称）。
-# 运行以下命令查看当前项目的实际 status 名称：
+# Status names must match exactly what is defined in the Jira workflow
+# (the status name, not the category name).
+# Run the following command to inspect the actual status names for your project:
 #   uv run python scripts/inspect_jira_issue_workflow.py <ISSUE-KEY>
 # -----------------------------------------------------------------------------
 jira:
-  # jira_get_latest_assigned_issue 工具返回处于以下状态之一的 issue。
-  # 必填（启用 jira 插件时）
+  # The jira_get_latest_assigned_issue tool returns issues in any of these statuses.
+  # Required (when jira plugin is enabled)
   latest_assigned_statuses:
-    - 待处理
-    - 处理中
+    - To Do
+    - In Progress
 
-  # jira_start_issue 工具将 issue 流转至此状态。
-  # 必填（启用 jira 插件时）
-  start_target_status: 处理中
+  # The jira_start_issue tool transitions the issue to this status.
+  # Required (when jira plugin is enabled)
+  start_target_status: In Progress
 
-  # jira_resolve_issue 工具将 issue 流转至此状态。
-  # 必填（启用 jira 插件时）
-  resolve_target_status: 已解决
+  # The jira_resolve_issue tool transitions the issue to this status.
+  # Required (when jira plugin is enabled)
+  resolve_target_status: Resolved
 
   attachments:
-    # 单个 issue 最多返回的图片数量。默认: 5
+    # Maximum number of images to return per issue. Default: 5
     max_images: 5
 
-    # 单张图片大小上限（字节）。超出的图片只返回元数据，不返回内容。
-    # 默认: 1048576（1 MiB）
+    # Maximum size per image in bytes. Images exceeding this limit will only
+    # have their metadata returned, not their content.
+    # Default: 1048576 (1 MiB)
     max_bytes_per_image: 1048576

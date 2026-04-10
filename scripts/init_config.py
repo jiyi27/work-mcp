@@ -107,7 +107,7 @@ def prompt_yes_no(label: str, *, current_enabled: bool | None = None) -> bool:
 def prompt_environment_type() -> str:
     print()
     print("当前是什么运行环境？")
-    print("1. 远程服务器（自动开启数据库和日志，其余不开启）")
+    print("1. 远程服务器")
     print("2. 本地")
     selected = prompt_choice("请输入选项", ENVIRONMENT_TYPE_BY_NUMBER, "2")
     return str(selected)
@@ -338,34 +338,27 @@ def _default_database_answers() -> dict[str, object]:
     }
 
 
-def collect_answers(project_root: Path = PROJECT_ROOT) -> SetupAnswers:
+def collect_answers(
+    env_type: str,
+    project_root: Path = PROJECT_ROOT,
+) -> SetupAnswers:
     env_values = parse_env_file(env_file_path(project_root))
     yaml_values = load_existing_yaml(project_root / "config.yaml")
-    existing_plugins = enabled_plugins_from_yaml(yaml_values)
 
     print("开始初始化配置。")
-    env_type = prompt_environment_type()
 
     if env_type == ENV_TYPE_REMOTE:
-        print("远程服务器模式：已默认开启数据库和日志搜索，其余插件不开启。")
+        print("远程服务器模式：将启用 database 和 log_search，并移除 jira、dingtalk。")
         enable_database = True
         enable_log_search = True
         enable_dingtalk = False
         enable_jira = False
     else:
-        print("请先选择要开启的模块；直接回车表示不开启。")
-        enable_database = resolve_plugin_enabled(
-            "database", current_enabled=PLUGIN_DATABASE in existing_plugins
-        )
-        enable_log_search = resolve_plugin_enabled(
-            "log_search", current_enabled=PLUGIN_LOG_SEARCH in existing_plugins
-        )
-        enable_dingtalk = resolve_plugin_enabled(
-            "dingtalk", current_enabled=PLUGIN_DINGTALK in existing_plugins
-        )
-        enable_jira = resolve_plugin_enabled(
-            "jira", current_enabled=PLUGIN_JIRA in existing_plugins
-        )
+        print("本地模式：将只启用 jira，并移除 database、log_search、dingtalk。")
+        enable_database = False
+        enable_log_search = False
+        enable_dingtalk = False
+        enable_jira = True
 
     database_answers: dict[str, object] = _default_database_answers()
     if enable_database:
@@ -430,14 +423,19 @@ def main() -> None:
 
     ensure_uv_available()
     sync_dependencies(project_root)
+    env_type = prompt_environment_type()
 
-    if not prompt_should_modify_existing(env_path, yaml_path):
+    should_modify_existing = True
+    if env_type != ENV_TYPE_REMOTE:
+        should_modify_existing = prompt_should_modify_existing(env_path, yaml_path)
+
+    if not should_modify_existing:
         print("已跳过配置修改。")
         print("运行 `uv run work-mcp` 启动服务。")
         return
 
     try:
-        answers = collect_answers(project_root)
+        answers = collect_answers(env_type, project_root)
     except RuntimeError as exc:
         raise SystemExit(f"错误: {exc}") from None
     except KeyboardInterrupt:
