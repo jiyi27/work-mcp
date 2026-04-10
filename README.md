@@ -17,32 +17,16 @@ Configuration is intentionally split by sensitivity, not by override priority.
 
 - `.env` contains sensitive credentials only.
 - `config.yaml` contains non-sensitive behavior and plugin settings only.
-- A single setting should be defined in one place only. This project does not use environment variables to override `config.yaml`.
-- Server startup mode is not stored in `config.yaml`. The packaged command defaults to `stdio`; use CLI flags or `make` targets when you want HTTP.
 
 To disable a plugin and all its tools, comment out its name in `plugins.enabled` in `config.yaml`.
 
-### Startup Health Checks
-
-Runtime dependency probes are controlled in `config.yaml`:
-
-```yaml
-startup:
-  healthcheck:
-    enabled: false
-    timeout_seconds: 10
-```
-
-- `startup.healthcheck.enabled` defaults to `false`. When enabled, server startup fails fast if a supported plugin's live dependency check fails.
-- `startup.healthcheck.timeout_seconds` applies to each startup probe and defaults to `10`.
-- This repository's checked-in `config.yaml` enables startup health checks for local use.
-- Today, dynamic startup checks are implemented for `jira` and `database`. Other plugins still use static config validation only.
-
 ### Database
 
-Configure a read-only SQL Server account for live debugging queries.
+Configure a read-only database account for live debugging queries. Supports SQL Server and MySQL.
 
 **1. Set credentials in `.env`:**
+
+SQL Server:
 
 ```env
 DB_TYPE=sqlserver
@@ -52,15 +36,28 @@ DB_USER=readonly_user
 DB_PASSWORD=your_password_here
 DB_NAME=master
 DB_DRIVER=ODBC Driver 18 for SQL Server
-DB_TRUST_SERVER_CERTIFICATE=false
+DB_TRUST_SERVER_CERTIFICATE=true
+DB_CONNECT_TIMEOUT_SECONDS=5
+```
+
+MySQL:
+
+```env
+DB_TYPE=mysql
+DB_HOST=your-mysql-host.example.com
+DB_PORT=3306
+DB_USER=readonly_user
+DB_PASSWORD=your_password_here
+DB_NAME=your_database
 DB_CONNECT_TIMEOUT_SECONDS=5
 ```
 
 - `DB_USER` must be a read-only database account. Tool-layer SQL validation is only defense in depth and is not the primary safety boundary.
 - `DB_NAME` is the default database used for connection bootstrap. The tools can still inspect other visible databases.
-- `DB_DRIVER` must match an installed ODBC driver on the host machine. For SQL Server, install the Microsoft ODBC Driver first.
-- `DB_TRUST_SERVER_CERTIFICATE=true` is only appropriate for environments where you intentionally bypass certificate validation.
-- When `startup.healthcheck.enabled=true`, the database plugin performs a live startup probe against the configured database driver and executes a lightweight SQL query against `DB_NAME`. Startup stops if the connection or query fails.
+- SQL Server requires the Microsoft ODBC Driver installed on the host. `DB_DRIVER` must match the installed driver name.
+- `DB_TRUST_SERVER_CERTIFICATE=true` is only appropriate for environments where you intentionally bypass certificate validation (SQL Server only).
+- MySQL uses `pymysql` — no ODBC driver needed. `DB_DRIVER` and `DB_TRUST_SERVER_CERTIFICATE` are ignored for MySQL.
+- When `startup.healthcheck.enabled=true`, the database plugin performs a live startup probe against the configured database and executes a lightweight SQL query against `DB_NAME`. Startup stops if the connection or query fails.
 
 **2. Enable in `config.yaml`:**
 
@@ -69,15 +66,6 @@ plugins:
   enabled:
     - database
 ```
-
-**3. Use the tools in this order when exploring data:**
-
-- `db_list_databases`
-- `db_list_tables`
-- `db_get_table_schema`
-- `db_execute_query`
-
-`db_execute_query` only accepts a single `SELECT` statement and caps returned rows.
 
 ### DingTalk
 
