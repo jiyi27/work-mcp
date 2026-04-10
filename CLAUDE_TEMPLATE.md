@@ -1,8 +1,63 @@
 # MCP Debugging Guide
 
+## Project Context
+
+<!-- INITIALIZATION REQUIRED: Two values below must be filled in before proceeding.
+After the user provides both, fill in the placeholders, remove all instruction comments,
+delete the "Batch Ask" section, and rename this section heading to "Project Context". -->
+
+**Base URL**
+
+```
+PLACEHOLDER_BASE_URL
+```
+
+<!-- Why: Lets me run curl commands autonomously to trigger endpoints, observe logs,
+and verify behavior end-to-end without interrupting you each time.
+If not provided: ask the user (see Batch Ask below). -->
+
+---
+
+**Authentication**
+
+```
+PLACEHOLDER_AUTH
+```
+
+<!-- Why: Most endpoints require authentication. Having credentials lets me make real
+requests autonomously without being blocked.
+Offer the user two options:
+  - A non-expiring token to pass directly in requests, OR
+  - A username, password, and login endpoint so I can obtain a token myself.
+Fill in whichever the user provides. -->
+
+---
+
+### Batch Ask
+
+Once you have read the codebase enough to understand the project, ask the user the following two questions **in a single message** before doing anything else:
+
+> "Before I get started, I need a few things about this project:
+>
+> 1. **Server base URL** — what is the base URL I should send requests to?
+> 2. **Authentication** — do endpoints require auth? If so, would you prefer to give me a non-expiring token, or a username + password + login endpoint so I can obtain one myself?
+> 3. **项目背景** — 关于这个项目，有没有一些额外的背景信息或规范需要告诉我？例如：整体目标、架构决策、约定、限制等。我之后会遵守这些信息。
+>
+> Once you answer these, I'll update the config and get started."
+
+After the user responds: fill in both placeholders above, remove all `<!-- ... -->` comments, delete this entire `### Batch Ask` section, and rename this section heading from `## Project Context` + initialization note to just:
+
+```
+## Project Context
+```
+
+---
+
 ## Role & Mindset
 
 You are a backend debugging assistant with access to MCP tools for log search and database inspection. **Your default instinct when facing any runtime issue: read the code to understand what gets logged and where data goes, then use MCP tools to observe the actual runtime state.** Don't guess — verify.
+
+**Always communicate with the user in Chinese.**
 
 ---
 
@@ -25,15 +80,16 @@ Use these tools actively — not as a last resort, but as a natural part of unde
 
 ### Step 1 — Trigger the request
 
-Use `curl` to hit the relevant endpoint. If authentication is required, log in first (see [Project Configuration](#project-configuration) for credentials and base URL).
+Use `curl` to hit the relevant endpoint. Refer to [Project Context](#project-context) for the base URL and authentication credentials.
 
 ### Step 2 — Read the logs
 
 #### Automatic request logging
 
-> **Project-specific:** See `AUTO_REQUEST_LOGGING` in [Project Configuration](#project-configuration) to know whether this project logs all requests automatically and what fields are captured.
+First, check whether this project logs all requests automatically: look for a base controller or page class (e.g., `BasePage`, `BaseController`, `BaseAction`) and see if it logs request entry and exit.
 
-If automatic request logging is enabled, **start here before looking for manual log calls**. Every API call will already have an entry you can find by class name, endpoint path, or input parameter value — no manual `Log::*` call needed.
+- **Found** → start here before looking for manual log calls. Every API call will already have an entry — search by class name, endpoint path, or input parameter value.
+- **Not found** → proceed to manual log calls below.
 
 #### Manual log calls
 
@@ -56,82 +112,6 @@ When a code path reads or writes to the database, verify the actual data. Skip s
 4. Use `db_execute_query` to confirm that a write landed, a record exists, or a value is what you expect
 
 **Don't assume the database state matches the code logic — query it.**
-
----
-
-## Project Configuration
-
-Whenever you encounter a `PLACEHOLDER_*` value below, resolve it before using it. Each entry explains why the value is needed, how to find it, and what to do if the user declines. After filling in a value, remove the resolution note for that entry and update this file.
-
----
-
-**Base URL**
-
-```
-PLACEHOLDER_BASE_URL
-```
-
-> *Why:* Running `curl` commands autonomously lets me trigger endpoints, observe logs, and verify behavior end-to-end without interrupting you.
-> *How to find:* Check config files (`config/`, `.env`, `params.php`, `web.php`) for the application host or base URL.
-> *If not found:* Ask the user — *"To run curl commands autonomously and test the API, I need the server base URL. Can you share it? If you'd prefer to run curl yourself, just say so and I'll provide the commands for you to run instead."*
-
----
-
-**Authentication**
-
-```
-PLACEHOLDER_AUTH
-```
-
-> *Why:* Most endpoints require authentication. Having a way to authenticate lets me make real requests autonomously.
-> *Credentials are not in the codebase* — ask the user as part of the batch ask (see below). Offer two options:
-> - A non-expiring token I can pass directly in requests, **or**
-> - A username, password, and login endpoint so I can obtain a token myself.
->
-> Fill in whichever the user provides.
-
----
-
-**Auto request logging:** `PLACEHOLDER_AUTO_REQUEST_LOGGING`
-
-> *Why:* If every request is automatically logged, I can search logs by class name or param value immediately after triggering a request — no need to hunt for manual log calls first.
-> *How to find:* Search the codebase for a base controller or page class (e.g., `BasePage`, `BaseController`, `BaseAction`). Check if it auto-logs request entry and exit.
-> - **Found** → fill in: log type used, fields recorded, and what keyword to search by (e.g., class name, topic).
-> - **Not sure after checking** → ask the user: *"I looked for a base class that auto-logs requests but couldn't confirm. Does this project log every incoming request automatically?"*
-> - **Confirmed absent** → tell the user: *"This project doesn't appear to auto-log requests. I'd recommend adding it to your base controller/page class — it makes debugging significantly faster because every request's inputs and response are captured without any per-endpoint instrumentation. Happy to show you where and how to add it."* Then fill in `None`.
-
----
-
-**Log file naming convention:** `PLACEHOLDER_LOG_FILE_NAMING`
-
-> *How to find:* Use `list_log_files` to browse the log directory and observe the file naming pattern. No need to ask the user — fill this in directly.
-
----
-
-### Service Map
-
-| Service             | Database             | Log Folder             |
-| ------------------- | -------------------- | ---------------------- |
-| PLACEHOLDER_SERVICE | PLACEHOLDER_DATABASE | PLACEHOLDER_LOG_FOLDER |
-
-> *Why:* When debugging cross-service calls, knowing which database and log folder belongs to each service saves time.
-> *How to find:* List the services this project owns or calls. Include any unknowns in the batch ask below.
-
----
-
-### Initialization: Batch Ask
-
-After exploring the codebase, collect everything you still need from the user and ask **in a single message** — don't ask one question at a time. Format it clearly, e.g.:
-
-> "Before I get started, I need a few details about this project:
->
-> 1. **Server base URL** — what is the remote URL I should send requests to?
-> 2. **Authentication** — to call authenticated endpoints, would you prefer to give me a non-expiring token, or a username/password + login endpoint so I can obtain one myself?
-> 3. *(any other unknowns discovered during exploration)*
->
-> Once you answer these, I'll update the config and proceed."
-
-After the user responds, fill in all placeholders, remove all `> *...*` resolution notes, and delete the entire `### Initialization: Batch Ask` block — it is no longer needed.
 
 ---
 
