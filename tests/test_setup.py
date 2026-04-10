@@ -53,16 +53,12 @@ def test_build_updated_env_for_mysql_removes_sqlserver_and_dingtalk_keys() -> No
 
 def test_build_updated_yaml_sets_supported_plugins_and_preserves_existing_sections() -> None:
     existing_yaml = {
-        "logging": {"dir": "custom-logs", "level": "warning"},
-        "startup": {"healthcheck": {"enabled": False, "timeout_seconds": 7}},
         "plugins": {"enabled": ["jira", "database"]},
         "jira": {"start_target_status": "In Progress"},
     }
 
     updated = build_updated_yaml(existing_yaml, _answers(enable_dingtalk=True))
 
-    assert updated["logging"] == {"dir": "custom-logs", "level": "warning"}
-    assert updated["startup"] == {"healthcheck": {"enabled": False, "timeout_seconds": 7}}
     assert updated["plugins"]["enabled"] == ["database", "log_search", "dingtalk"]
     assert updated["log_search"]["log_base_dir"] == "/tmp/work-logs"
     assert updated["jira"] == {"start_target_status": "In Progress"}

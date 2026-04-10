@@ -141,6 +141,33 @@ jira:
         config_module.get_settings()
 
 
+def test_get_settings_requires_plugins_section(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="Missing plugins section"):
+        config_module.get_settings()
+
+
+def test_get_settings_requires_plugins_enabled_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins: {}
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="Missing plugins.enabled"):
+        config_module.get_settings()
+
+
 def test_get_settings_requires_latest_assigned_statuses_when_jira_enabled(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

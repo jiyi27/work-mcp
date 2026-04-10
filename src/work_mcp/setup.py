@@ -44,11 +44,6 @@ ENV_KEYS_MANAGED_BY_INIT = (
 )
 DEFAULT_PLUGIN_SET = ("database", "log_search")
 OPTIONAL_PLUGIN_DINGTALK = "dingtalk"
-DEFAULT_LOG_DIR = "logs"
-DEFAULT_LOG_LEVEL = "info"
-DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 10
-
-
 @dataclass(frozen=True)
 class SetupAnswers:
     db_type: str
@@ -138,24 +133,6 @@ def build_updated_env(existing_env: dict[str, str], answers: SetupAnswers) -> di
 
 def build_updated_yaml(existing_yaml: dict[str, Any], answers: SetupAnswers) -> dict[str, Any]:
     updated = dict(existing_yaml)
-
-    logging_section = updated.get("logging")
-    if not isinstance(logging_section, dict):
-        logging_section = {}
-    logging_section.setdefault("dir", DEFAULT_LOG_DIR)
-    logging_section.setdefault("level", DEFAULT_LOG_LEVEL)
-    updated["logging"] = logging_section
-
-    startup_section = updated.get("startup")
-    if not isinstance(startup_section, dict):
-        startup_section = {}
-    healthcheck_section = startup_section.get("healthcheck")
-    if not isinstance(healthcheck_section, dict):
-        healthcheck_section = {}
-    healthcheck_section.setdefault("enabled", True)
-    healthcheck_section.setdefault("timeout_seconds", DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS)
-    startup_section["healthcheck"] = healthcheck_section
-    updated["startup"] = startup_section
 
     enabled_plugins = [
         plugin

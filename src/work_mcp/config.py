@@ -135,10 +135,14 @@ def default_startup_settings() -> StartupSettings:
 
 
 def _read_enabled_plugins(yaml_cfg: dict[str, Any]) -> tuple[str, ...]:
-    yaml_plugins = yaml_cfg.get("plugins", {})
+    if "plugins" not in yaml_cfg:
+        raise RuntimeError("Missing plugins section in config.yaml.")
+    yaml_plugins = yaml_cfg["plugins"]
     if not isinstance(yaml_plugins, dict):
         raise RuntimeError("Invalid plugins section in config.yaml. Expected a mapping.")
-    raw_enabled = yaml_plugins.get("enabled", [])
+    if "enabled" not in yaml_plugins:
+        raise RuntimeError("Missing plugins.enabled in config.yaml.")
+    raw_enabled = yaml_plugins["enabled"]
     if not isinstance(raw_enabled, list):
         raise RuntimeError("Invalid plugins.enabled in config.yaml. Expected a list.")
     enabled = tuple(str(item).strip() for item in raw_enabled if str(item).strip())
