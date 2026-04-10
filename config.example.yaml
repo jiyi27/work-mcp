@@ -1,0 +1,94 @@
+logging:
+  # Optional.
+  # Controls where the server writes its own runtime logs.
+  # Relative paths are resolved from the process working directory.
+  # Example:
+  # - logs
+  # - ./logs
+  # - /var/log/work-mcp
+  # Default: logs
+  dir: logs
+
+  # Optional.
+  # Minimum log severity to write.
+  # Allowed values:
+  # - debug   : most verbose, useful during local debugging
+  # - info    : normal runtime logging
+  # - warning : only warnings and errors
+  # - error   : only errors
+  # Default: info
+  level: info
+
+startup:
+  healthcheck:
+    # Optional.
+    # Whether to probe enabled plugin dependencies before the MCP server starts.
+    # true  = fail fast when Jira / database connectivity is broken
+    # false = skip startup probes and rely on runtime failures
+    # Default: false
+    enabled: false
+
+    # Optional.
+    # Timeout in seconds for each startup probe.
+    # Must be an integer greater than 0.
+    # Default: 10
+    timeout_seconds: 10
+
+plugins:
+  # Required.
+  # Lists which plugin groups are enabled at startup.
+  # Only plugins listed here will register their MCP tools.
+  # Allowed values:
+  # - database
+  # - dingtalk
+  # - jira
+  # - log_search
+  #
+  # Remove a plugin from this list to disable all tools from that plugin.
+  enabled:
+    - database
+    - dingtalk
+    - jira
+    - log_search
+
+log_search:
+  # Required when `log_search` is enabled.
+  # Absolute directory that `list_log_files` and `search_log` are allowed to access.
+  # Must point to an existing directory on disk.
+  # Example:
+  #   /absolute/path/to/logs
+  log_base_dir: /absolute/path/to/logs
+
+jira:
+  # Required when `jira` is enabled.
+  # Exact Jira status names that `jira_get_latest_assigned_issue` is allowed to return.
+  # These are workflow status names, not generic status categories.
+  # Use:
+  #   uv run python scripts/inspect_jira_issue_workflow.py YOUR-123
+  # to inspect the actual status names and available transitions in your Jira project.
+  latest_assigned_statuses:
+    - To Do
+    - In Progress
+
+  # Required when `jira` is enabled.
+  # Exact Jira target status name used by `jira_start_issue`.
+  # The server picks the currently available transition whose destination status
+  # matches this value.
+  start_target_status: In Progress
+
+  # Required when `jira` is enabled.
+  # Exact Jira target status name used by `jira_resolve_issue`.
+  resolve_target_status: Done
+
+  attachments:
+    # Optional.
+    # Maximum number of Jira image attachments returned for one issue.
+    # Must be an integer greater than 0.
+    # Default: 5
+    max_images: 5
+
+    # Optional.
+    # Maximum size, in bytes, allowed for each returned image attachment.
+    # Must be an integer greater than 0.
+    # Default: 1048576 (1 MiB)
+    max_bytes_per_image: 1048576
