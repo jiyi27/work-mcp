@@ -18,11 +18,11 @@ def test_info_writes_json_log_record(tmp_path: Path) -> None:
     logger.configure(log_dir=tmp_path, level="info")
     logger.set_context_id("ctx-123")
 
-    logger.info("tool.completed", {"tool": "demo"})
+    logger.info("tool.response", {"tool": "demo"})
 
     record = _read_single_record(tmp_path, "info")
     assert record["context_id"] == "ctx-123"
-    assert record["topic"] == "tool.completed"
+    assert record["topic"] == "tool.response"
     assert record["data"] == {"tool": "demo"}
     assert record["caller"]["func"] == "test_info_writes_json_log_record"
 
@@ -62,7 +62,7 @@ def test_configure_rejects_unknown_level(tmp_path: Path) -> None:
 def test_info_truncates_long_string_fields(tmp_path: Path) -> None:
     logger.configure(log_dir=tmp_path, level="info")
 
-    logger.info("tool.completed", {"result": {"base64": "a" * 600}})
+    logger.info("tool.response", {"result": {"base64": "a" * 600}})
 
     record = _read_single_record(tmp_path, "info")
     assert record["data"]["result"]["base64"] == "a" * 600
@@ -72,7 +72,7 @@ def test_info_preserves_prefix_and_suffix_when_truncating_long_string_fields(tmp
     logger.configure(log_dir=tmp_path, level="info")
     long_value = ("prefix-" * 120) + ("middle-" * 120) + ("-suffix" * 120)
 
-    logger.info("tool.completed", {"result": {"base64": long_value}})
+    logger.info("tool.response", {"result": {"base64": long_value}})
 
     record = _read_single_record(tmp_path, "info")
     base64_field = record["data"]["result"]["base64"]

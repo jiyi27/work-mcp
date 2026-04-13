@@ -14,7 +14,7 @@ from ..error_messages import format_http_service_error
 from ..hints import DINGTALK_INTERNAL_ERROR_HINT, required_param_hint
 from ..http import HttpRequestError, request_json
 from ..logger import configure as configure_logger
-from ..logger import error, info
+from ..logger import error
 
 
 def _build_signed_webhook_url(webhook_url: str, secret: str | None) -> str:
@@ -124,5 +124,4 @@ def register_dingtalk_tools(mcp: FastMCP, settings: Settings) -> None:
                 "hint": DINGTALK_INTERNAL_ERROR_HINT,
             }
 
-        info("dingtalk.sent", {"title": title})
         return {"success": True}

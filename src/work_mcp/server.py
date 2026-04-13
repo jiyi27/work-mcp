@@ -28,24 +28,24 @@ ALLOWED_TRANSPORTS = frozenset({"stdio", "streamable-http"})
 def _wrap_with_logging(tool_name: str, fn: Callable) -> Callable:
     @functools.wraps(fn)
     async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-        info("tool.called", {"tool": tool_name, "args": kwargs})
+        info("tool.request", {"tool": tool_name, "args": kwargs})
         try:
             result = await fn(*args, **kwargs)
         except Exception as exc:
             error("tool.failed", {"tool": tool_name, "args": kwargs}, exc=exc)
             raise
-        info("tool.completed", {"tool": tool_name, "args": kwargs, "result": result})
+        info("tool.response", {"tool": tool_name, "result": result})
         return result
 
     @functools.wraps(fn)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-        info("tool.called", {"tool": tool_name, "args": kwargs})
+        info("tool.request", {"tool": tool_name, "args": kwargs})
         try:
             result = fn(*args, **kwargs)
         except Exception as exc:
             error("tool.failed", {"tool": tool_name, "args": kwargs}, exc=exc)
             raise
-        info("tool.completed", {"tool": tool_name, "args": kwargs, "result": result})
+        info("tool.response", {"tool": tool_name, "result": result})
         return result
 
     return async_wrapper if asyncio.iscoroutinefunction(fn) else sync_wrapper
