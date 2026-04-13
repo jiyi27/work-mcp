@@ -13,96 +13,78 @@ Tools are grouped by plugin. Each plugin is enabled or disabled as a unit in `co
 
 ## Configuration
 
-Configuration is intentionally split by sensitivity, not by override priority.
-
-- `.env` contains sensitive credentials only.
-- `config.yaml` contains non-sensitive behavior and plugin settings only.
-
-To disable a plugin and all its tools, comment out its name in `plugins.enabled` in `config.yaml`.
+All configuration lives in `config.yaml`. To disable a plugin and all its tools, comment out its name in `plugins.enabled`.
 
 ### Database
 
 Configure a read-only database account for live debugging queries. Supports SQL Server and MySQL.
 
-**1. Set credentials in `.env`:**
+**Configure in `config.yaml`:**
 
 SQL Server:
-
-```env
-DB_TYPE=sqlserver
-DB_HOST=your-sqlserver-host.example.com
-DB_PORT=1433
-DB_USER=readonly_user
-DB_PASSWORD=your_password_here
-DB_NAME=master
-DB_DRIVER=ODBC Driver 18 for SQL Server
-DB_TRUST_SERVER_CERTIFICATE=true
-DB_CONNECT_TIMEOUT_SECONDS=5
-```
-
-MySQL:
-
-```env
-DB_TYPE=mysql
-DB_HOST=your-mysql-host.example.com
-DB_PORT=3306
-DB_USER=readonly_user
-DB_PASSWORD=your_password_here
-DB_NAME=your_database
-DB_CONNECT_TIMEOUT_SECONDS=5
-```
-
-- `DB_USER` must be a read-only database account. Tool-layer SQL validation is only defense in depth and is not the primary safety boundary.
-- `DB_NAME` is the default database used for connection bootstrap. The tools can still inspect other visible databases.
-- SQL Server requires the Microsoft ODBC Driver installed on the host. `DB_DRIVER` must match the installed driver name.
-- `DB_TRUST_SERVER_CERTIFICATE=true` is only appropriate for environments where you intentionally bypass certificate validation (SQL Server only).
-- MySQL uses `pymysql` — no ODBC driver needed. `DB_DRIVER` and `DB_TRUST_SERVER_CERTIFICATE` are ignored for MySQL.
-- When `startup.healthcheck.enabled=true`, the database plugin performs a live startup probe against the configured database and executes a lightweight SQL query against `DB_NAME`. Startup stops if the connection or query fails.
-
-**2. Enable in `config.yaml`:**
 
 ```yaml
 plugins:
   enabled:
     - database
+
+database:
+  type: sqlserver
+  host: your-sqlserver-host.example.com
+  port: 1433
+  user: readonly_user
+  password: your_password_here
+  name: master
+  driver: ODBC Driver 18 for SQL Server
+  trust_server_certificate: true
+  connect_timeout_seconds: 5
 ```
+
+MySQL:
+
+```yaml
+plugins:
+  enabled:
+    - database
+
+database:
+  type: mysql
+  host: your-mysql-host.example.com
+  port: 3306
+  user: readonly_user
+  password: your_password_here
+  name: your_database
+  connect_timeout_seconds: 5
+```
+
+- `user` must be a read-only database account. Tool-layer SQL validation is only defense in depth and is not the primary safety boundary.
+- `name` is the default database used for connection bootstrap. The tools can still inspect other visible databases.
+- SQL Server requires the Microsoft ODBC Driver installed on the host. `driver` must match the installed driver name.
+- `trust_server_certificate: true` is only appropriate for environments where you intentionally bypass certificate validation (SQL Server only).
+- MySQL uses `pymysql` — no ODBC driver needed. `driver` and `trust_server_certificate` are ignored for MySQL.
+- When `startup.healthcheck.enabled=true`, the database plugin performs a live startup probe against the configured database and executes a lightweight SQL query against `name`. Startup stops if the connection or query fails.
 
 ### DingTalk
 
-**1. Create a robot** — open the group settings in DingTalk → 机器人管理 → add a 自定义 webhook robot. Copy the webhook URL. If you enable 加签, also copy the signing secret.
+**1. Create a robot** — open the group settings in DingTalk → Robot Management → add a custom webhook robot. Copy the webhook URL. If you enable additional secret which used to replace keyword, also copy the signing secret.
 
-**2. Set credentials in `.env`:**
-
-```env
-DINGTALK_WEBHOOK_URL=https://oapi.dingtalk.com/robot/send?access_token=your_token_here
-DINGTALK_SECRET=SECxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-`DINGTALK_SECRET` is only required when the robot has 加签 enabled. If it is required but missing, sends will fail with a signature mismatch error.
-
-**3. Enable in `config.yaml`:**
+**2. Configure in `config.yaml`:**
 
 ```yaml
 plugins:
   enabled:
     - dingtalk
+
+dingtalk:
+  webhook_url: https://oapi.dingtalk.com/robot/send?access_token=your_token_here
+  secret: SECxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+`secret` is only required when the robot has additional secret enabled. If it is required but missing, sends will fail with a signature mismatch error.
 
 ### Jira
 
-**1. Set credentials in `.env`:**
-
-```env
-JIRA_BASE_URL=https://your-jira-instance.example.com
-JIRA_API_TOKEN=your_jira_api_token_here
-JIRA_PROJECT_KEY=PROJECT1
-```
-
-- `JIRA_API_TOKEN` — create one at your Jira profile → Personal Access Tokens.
-- `JIRA_PROJECT_KEY` — the short key for the project this server is allowed to query and update (e.g. `IOS`, `PROJECT1`).
-- When `startup.healthcheck.enabled=true`, the Jira plugin probes `GET /rest/api/2/serverInfo` and `GET /rest/api/2/myself` using the configured base URL and token. Startup stops if Jira is unreachable or authentication fails.
-
-**2. Discover your workflow status names:**
+**1. Discover your workflow status names:**
 
 ```bash
 uv run python scripts/inspect_jira_issue_workflow.py YOUR-123
@@ -110,7 +92,7 @@ uv run python scripts/inspect_jira_issue_workflow.py YOUR-123
 
 This prints every status name and available transition for that issue. Use the output to fill in the next step.
 
-**3. Configure `config.yaml`:**
+**2. Configure in `config.yaml`:**
 
 ```yaml
 plugins:
@@ -118,6 +100,9 @@ plugins:
     - jira
 
 jira:
+  base_url: https://your-jira-instance.example.com
+  api_token: your_jira_api_token_here
+  project_key: PROJECT1
   latest_assigned_statuses:  # statuses that jira_get_latest_assigned_issue will return
     - 待处理
     - 已接收
@@ -128,6 +113,10 @@ jira:
     max_images: 5
     max_bytes_per_image: 1048576
 ```
+
+- `api_token` — create one at your Jira profile → Personal Access Tokens.
+- `project_key` — the short key for the project this server is allowed to query and update (e.g. `IOS`, `PROJECT1`).
+- When `startup.healthcheck.enabled=true`, the Jira plugin probes `GET /rest/api/2/serverInfo` and `GET /rest/api/2/myself` using the configured base URL and token. Startup stops if Jira is unreachable or authentication fails.
 
 These must be **exact Jira status names** (not category names like `In Progress` or `Done`). If multiple transitions reach the same target status, the tool returns a `transition_ambiguous` error — rename statuses or adjust the workflow to resolve it.
 
@@ -246,12 +235,6 @@ uv run python scripts/preview_tool.py call db_list_databases \
   --args '{}'
 
 
-```
-
-Run smoke tests:
-
-```bash
-uv run pytest
 ```
 
 Inspect one Jira issue's current status and available workflow transitions:

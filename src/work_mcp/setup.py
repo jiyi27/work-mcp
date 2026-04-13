@@ -280,8 +280,7 @@ def get_installed_odbc_drivers() -> list[str] | None:
 
 
 def diagnose(project_root: Path = PROJECT_ROOT) -> list[DiagnosticResult]:
-    results: list[DiagnosticResult] = []
-    results.append(_diagnose_uv())
+    results: list[DiagnosticResult] = [_diagnose_uv()]
 
     yaml_path = yaml_config_path(project_root)
     results.append(_file_result(yaml_path, "config"))
@@ -527,8 +526,8 @@ def _probe_database_connectivity(
                 settings,
                 timeout_seconds=timeout_seconds,
             )
-        except Exception as exc:
-            result_queue.put((False, exc))
+        except Exception as _exc:
+            result_queue.put((False, _exc))
             return
         result_queue.put((True, result))
 
