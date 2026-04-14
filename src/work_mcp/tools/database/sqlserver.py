@@ -117,11 +117,7 @@ class SqlServerClient(AbstractDatabaseClient):
 
     def execute_query(self, database: str, sql: str) -> QueryResult:
         def operation(cursor: pyodbc.Cursor) -> QueryResult:
-            try:
-                cursor.execute(sql)
-            except pyodbc.Error as exc:
-                self._raise_for_pyodbc_error(exc, database=database)
-
+            cursor.execute(sql)
             description = cursor.description or []
             columns = [str(item[0]) for item in description]
             fetched_rows = cursor.fetchmany(QUERY_MAX_LIMIT + 1)

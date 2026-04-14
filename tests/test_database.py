@@ -467,6 +467,34 @@ def test_sqlserver_client_normalizes_query_values(monkeypatch) -> None:
     ]]
 
 
+def test_sqlserver_execute_query_reconnects_after_connection_error(monkeypatch) -> None:
+    error_type = type("FakePyodbcError", (Exception,), {})
+    first_connection = _StubConnection(
+        rows=[("app_db",)],
+        fail_first_execute=True,
+        error_type=error_type,
+    )
+    second_connection = _StubConnection(rows=[("recovered",)], error_type=error_type)
+    issued_connections = [first_connection, second_connection]
+    connect_calls: list[str] = []
+
+    def fake_connect(connection_string: str, **_: object) -> _StubConnection:
+        connect_calls.append(connection_string)
+        return issued_connections.pop(0)
+
+    monkeypatch.setattr("work_mcp.tools.database.sqlserver.pyodbc.connect", fake_connect)
+    monkeypatch.setattr("work_mcp.tools.database.sqlserver.pyodbc.Error", error_type)
+
+    client = SqlServerClient(_DEFAULT_DATABASE)
+
+    result = client.execute_query("app_db", "SELECT * FROM orders")
+
+    assert result.rows == [["recovered"]]
+    assert len(connect_calls) == 2
+    assert first_connection.close_calls == 1
+    assert second_connection.execute_calls == 1
+
+
 def test_mysql_client_reuses_connection_per_database(monkeypatch) -> None:
     connect_calls: list[dict[str, object]] = []
     connection = _StubConnection(rows=[("app_db",)], error_type=Exception)
@@ -541,6 +569,36 @@ def test_mysql_client_reconnects_after_connection_error(monkeypatch) -> None:
     client = MySqlClient(_DEFAULT_MYSQL_DATABASE)
 
     assert client.list_databases() == ["app_db"]
+    assert len(connect_calls) == 2
+    assert first_connection.close_calls == 1
+    assert second_connection.execute_calls == 1
+
+
+def test_mysql_execute_query_reconnects_after_connection_error(monkeypatch) -> None:
+    error_type = type("FakeMySQLError", (Exception,), {})
+    first_connection = _StubConnection(
+        rows=[("app_db",)],
+        fail_first_execute=True,
+        error_type=error_type,
+    )
+    second_connection = _StubConnection(rows=[("recovered",)], error_type=error_type)
+    issued_connections = [first_connection, second_connection]
+    connect_calls: list[dict[str, object]] = []
+
+    def fake_connect(**kwargs: object) -> _StubConnection:
+        connect_calls.append(kwargs)
+        return issued_connections.pop(0)
+
+    monkeypatch.setattr(
+        "work_mcp.tools.database.mysql.pymysql",
+        SimpleNamespace(connect=fake_connect, MySQLError=error_type),
+    )
+
+    client = MySqlClient(_DEFAULT_MYSQL_DATABASE)
+
+    result = client.execute_query("app_db", "SELECT * FROM products")
+
+    assert result.rows == [["recovered"]]
     assert len(connect_calls) == 2
     assert first_connection.close_calls == 1
     assert second_connection.execute_calls == 1

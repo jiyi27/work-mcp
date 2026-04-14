@@ -209,11 +209,7 @@ class MySqlClient(AbstractDatabaseClient):
 
     def execute_query(self, database: str, sql: str) -> QueryResult:
         def operation(cursor: _MySqlCursor) -> QueryResult:
-            try:
-                cursor.execute(sql)
-            except _mysql_error_type() as exc:
-                _raise_for_mysql_error(exc, database=database)
-
+            cursor.execute(sql)
             description = cursor.description or []
             columns = [str(item[0]) for item in description]
             fetched_rows = cursor.fetchmany(QUERY_MAX_LIMIT + 1)
