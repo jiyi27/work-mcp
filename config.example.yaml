@@ -40,7 +40,7 @@ startup:
 # Plugin toggles
 # Only plugins listed here will have their tools registered.
 # Comment out a line to disable all tools from that plugin.
-# Options: database | dingtalk | jira | log_search
+# Options: database | dingtalk | jira | log_search | remote_fs
 # -----------------------------------------------------------------------------
 plugins:
   enabled:
@@ -48,6 +48,31 @@ plugins:
     - dingtalk
     - jira
     - log_search
+    - remote_fs
+
+
+# -----------------------------------------------------------------------------
+# Plugin: remote_fs
+# Required: plugins.enabled contains "remote_fs"
+# Provides read-only tools for inspecting server-side files over MCP.
+# Each root defines an allowed directory the agent may observe.
+# -----------------------------------------------------------------------------
+remote_fs:
+  roots:
+    - name: app
+      path: /srv/myapp
+      kind: code
+      description: Deployed application source
+
+    - name: logs
+      path: /var/log/myapp
+      kind: logs
+      description: Application log files
+
+    - name: config
+      path: /etc/myapp
+      kind: config
+      description: Production configuration
 
 
 # -----------------------------------------------------------------------------

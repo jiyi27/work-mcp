@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+from ...hints import STOP_AND_NOTIFY_USER_INSTRUCTION
+from .constants import MAX_FILE_SIZE_MB, MAX_SEARCH_MATCHES, MAX_TREE_ENTRIES
+
+# ---------------------------------------------------------------------------
+# Tool names — single source of truth for registrations and cross-tool hints.
+# ---------------------------------------------------------------------------
+TOOL_GET_ALLOWED_ROOTS = "get_allowed_roots"
+TOOL_LIST_TREE = "list_tree"
+TOOL_SEARCH_FILES = "search_files"
+TOOL_READ_FILE = "read_file"
+TOOL_SEARCH_FILE_REVERSE = "search_file_reverse"
+
+# ---------------------------------------------------------------------------
+# Tool descriptions — short, agent-oriented.
+# ---------------------------------------------------------------------------
+GET_ALLOWED_ROOTS_DESCRIPTION = """\
+Return the list of server directories the agent may inspect.
+"""
+
+LIST_TREE_DESCRIPTION = """\
+Return a directory listing for a path under an allowed root.
+"""
+
+SEARCH_FILES_DESCRIPTION = """\
+Search file contents or file names under allowed roots.
+"""
+
+READ_FILE_DESCRIPTION = """\
+Read a selected range from a known file.
+"""
+
+SEARCH_FILE_REVERSE_DESCRIPTION = """\
+Search a known file from the end and return the newest matches first.
+"""
+
+# ---------------------------------------------------------------------------
+# Shared hints — reused across multiple tools.
+# ---------------------------------------------------------------------------
+HINT_PATH_NOT_ALLOWED = (
+    "The path is outside all configured roots. "
+    f"{STOP_AND_NOTIFY_USER_INSTRUCTION}: the requested path is not accessible."
+)
+
+HINT_PATH_NOT_FOUND = (
+    "The path does not exist. Do not guess a replacement path. Use "
+    f"{TOOL_GET_ALLOWED_ROOTS}, {TOOL_LIST_TREE}, or {TOOL_SEARCH_FILES} "
+    "to locate the correct path."
+)
+
+HINT_NOT_A_FILE = (
+    f"The path is a directory, not a file. Use {TOOL_LIST_TREE} to inspect "
+    "its contents."
+)
+
+HINT_NOT_A_DIRECTORY = (
+    f"The path is a file, not a directory. Use {TOOL_READ_FILE} to read a "
+    "range from it."
+)
+
+HINT_BINARY_FILE_NOT_SUPPORTED = (
+    "The file appears to be binary. Do not retry with the same tool. "
+    f"{STOP_AND_NOTIFY_USER_INSTRUCTION}: this tool only supports text files."
+)
+
+HINT_FILE_TOO_LARGE = (
+    f"The file is larger than {MAX_FILE_SIZE_MB} MB. Do not read it directly with "
+    f"{TOOL_READ_FILE} or {TOOL_SEARCH_FILE_REVERSE}. Narrow the target file first "
+    f"or {STOP_AND_NOTIFY_USER_INSTRUCTION}: the file is too large for this tool."
+)
+
+# ---------------------------------------------------------------------------
+# get_allowed_roots hints
+# ---------------------------------------------------------------------------
+HINT_ROOTS_FOUND = (
+    "The available roots are now known. Choose a root and continue with "
+    f"{TOOL_LIST_TREE} or {TOOL_SEARCH_FILES}."
+)
+
+HINT_NO_ROOTS = (
+    "No roots are configured on the server. "
+    f"{STOP_AND_NOTIFY_USER_INSTRUCTION}: the remote inspection tools have "
+    "no allowed roots configured."
+)
+
+# ---------------------------------------------------------------------------
+# list_tree hints
+# ---------------------------------------------------------------------------
+HINT_LIST_TREE_COMPLETE = (
+    "The directory listing is complete. If you already know the target file, "
+    f"use {TOOL_READ_FILE}. Otherwise use {TOOL_SEARCH_FILES} to narrow the search."
+)
+
+HINT_LIST_TREE_TRUNCATED = (
+    f"The directory listing reached the server limit ({MAX_TREE_ENTRIES} entries). "
+    f"Do not keep browsing blindly. Use {TOOL_SEARCH_FILES} with a narrower root "
+    "or path_glob."
+)
+
+HINT_LIST_TREE_PATH_NOT_FOUND = (
+    "The directory path does not exist. Verify the path against the allowed "
+    f"roots or use {TOOL_LIST_TREE} on a higher-level directory first."
+)
+
+# ---------------------------------------------------------------------------
+# search_files hints
+# ---------------------------------------------------------------------------
+HINT_SEARCH_COMPLETE = (
+    "Matches were found. Pick the most relevant path and line, then use "
+    f"{TOOL_READ_FILE} to read a small range around that location."
+)
+
+HINT_SEARCH_TRUNCATED = (
+    f"The search result reached the server limit ({MAX_SEARCH_MATCHES} matches). "
+    "Narrow the search with a more specific root, path_glob, or query before "
+    "retrying."
+)
+
+HINT_SEARCH_NO_MATCHES = (
+    "No matches were found. Check the query text, file pattern, and chosen "
+    "root. If the target is a log file and you already know its path, use "
+    f"{TOOL_SEARCH_FILE_REVERSE} instead of broad cross-file search."
+)
+
+HINT_SEARCH_INVALID_REGEX = (
+    "The query is not a valid regular expression. Fix the pattern and retry."
+)
+
+HINT_SEARCH_INVALID_ARGUMENT = (
+    "At least one of query or path_glob is required. Provide a content query, "
+    "a file name pattern, or both."
+)
+
+# ---------------------------------------------------------------------------
+# read_file hints
+# ---------------------------------------------------------------------------
+HINT_READ_FILE_COMPLETE = (
+    "The requested range was returned. Continue analysis, or call "
+    f"{TOOL_READ_FILE} again with a different range if more context is needed."
+)
+
+HINT_READ_FILE_TRUNCATED = (
+    "More lines exist outside the returned range. If more context is needed, "
+    f"call {TOOL_READ_FILE} again with the next range."
+)
+
+HINT_READ_FILE_EMPTY = "The file exists but contains no text lines."
+
+HINT_READ_FILE_INVALID_ARGUMENT = (
+    "The requested line range is invalid. Use a positive start_line, positive "
+    "max_lines, and a non-negative tail."
+)
+
+HINT_READ_FILE_LINE_OUT_OF_RANGE = (
+    "The requested start_line is beyond the end of the file. Use a smaller "
+    "start_line or read from the tail instead."
+)
+
+# ---------------------------------------------------------------------------
+# search_file_reverse hints
+# ---------------------------------------------------------------------------
+HINT_REVERSE_SEARCH_COMPLETE = (
+    "Recent matches were found. Use the returned context to analyze the issue. "
+    f"If more surrounding lines are needed, call {TOOL_READ_FILE} for the "
+    "matched path and line range."
+)
+
+HINT_REVERSE_SEARCH_TRUNCATED = (
+    "The newest matches reached the server limit. If you need fewer but richer "
+    "results, retry with a more specific query or smaller match count."
+)
+
+HINT_REVERSE_SEARCH_NO_MATCHES = (
+    "No matches were found in this file. Verify the query text. If the file "
+    f"path may be wrong, use {TOOL_LIST_TREE} or {TOOL_SEARCH_FILES} first."
+)
+
+HINT_REVERSE_SEARCH_INVALID_ARGUMENT = (
+    "The search arguments are invalid. Provide a non-empty query and valid "
+    "positive limits for matches and context lines."
+)
+
+HINT_REVERSE_SEARCH_INVALID_REGEX = (
+    "The query is not a valid regular expression. Fix the pattern and retry."
+)

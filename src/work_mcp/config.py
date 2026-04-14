@@ -10,7 +10,7 @@ import yaml
 YAML_CONFIG_FILE = "config.yaml"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOG_LEVELS = frozenset({"debug", "info", "warning", "error"})
-KNOWN_PLUGINS = frozenset({"database", "dingtalk", "jira", "log_search"})
+KNOWN_PLUGINS = frozenset({"database", "dingtalk", "jira", "log_search", "remote_fs"})
 DEFAULT_TRANSPORT = "stdio"
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 8000
@@ -50,6 +50,19 @@ class LogSearchSettings:
 
 
 @dataclass(frozen=True)
+class AllowedRoot:
+    name: str
+    path: Path
+    kind: str
+    description: str
+
+
+@dataclass(frozen=True)
+class RemoteFsSettings:
+    roots: tuple[AllowedRoot, ...]
+
+
+@dataclass(frozen=True)
 class DatabaseSettings:
     db_type: str
     host: str
@@ -80,6 +93,7 @@ class Settings:
     jira_attachment_max_bytes: int
     log_search: LogSearchSettings | None
     database: DatabaseSettings | None = None
+    remote_fs: RemoteFsSettings | None = None
 
 
 def load_yaml_config(yaml_path: Path | None = None) -> dict[str, Any]:
@@ -200,6 +214,60 @@ def _read_log_search_settings(yaml_cfg: dict[str, Any]) -> LogSearchSettings | N
         )
     log_base_dir = _read_text(yaml_log_search.get("log_base_dir"))
     return LogSearchSettings(log_base_dir=log_base_dir)
+
+
+def _read_remote_fs_settings(yaml_cfg: dict[str, Any]) -> RemoteFsSettings | None:
+    yaml_remote_fs = yaml_cfg.get("remote_fs")
+    if not yaml_remote_fs:
+        return None
+    if not isinstance(yaml_remote_fs, dict):
+        raise RuntimeError(
+            "Invalid remote_fs section in config.yaml. Expected a mapping."
+        )
+    raw_roots = yaml_remote_fs.get("roots", [])
+    if not isinstance(raw_roots, list):
+        raise RuntimeError(
+            "Invalid remote_fs.roots in config.yaml. Expected a list."
+        )
+    roots: list[AllowedRoot] = []
+    for idx, raw_root in enumerate(raw_roots):
+        if not isinstance(raw_root, dict):
+            raise RuntimeError(
+                f"Invalid remote_fs.roots[{idx}] in config.yaml. Expected a mapping."
+            )
+        name = _read_text(raw_root.get("name"))
+        raw_path = _read_text(raw_root.get("path"))
+        kind = _read_text(raw_root.get("kind"))
+        description = _read_text(raw_root.get("description"))
+        if not name:
+            raise RuntimeError(
+                f"Missing remote_fs.roots[{idx}].name in config.yaml."
+            )
+        if not raw_path:
+            raise RuntimeError(
+                f"Missing remote_fs.roots[{idx}].path in config.yaml."
+            )
+        if not kind:
+            raise RuntimeError(
+                f"Missing remote_fs.roots[{idx}].kind in config.yaml."
+            )
+        if not description:
+            raise RuntimeError(
+                f"Missing remote_fs.roots[{idx}].description in config.yaml."
+            )
+        resolved = Path(raw_path).resolve()
+        if not resolved.exists():
+            raise RuntimeError(
+                f"remote_fs.roots[{idx}].path does not exist: {raw_path}"
+            )
+        if not resolved.is_dir():
+            raise RuntimeError(
+                f"remote_fs.roots[{idx}].path is not a directory: {raw_path}"
+            )
+        roots.append(AllowedRoot(
+            name=name, path=resolved, kind=kind, description=description,
+        ))
+    return RemoteFsSettings(roots=tuple(roots))
 
 
 def _read_dingtalk_settings(yaml_cfg: dict[str, Any]) -> tuple[str, str | None]:
@@ -336,6 +404,12 @@ def validate_settings(settings: Settings) -> None:
                     "log_search: missing log_search.log_base_dir in config.yaml"
                 )
 
+    if "remote_fs" in settings.enabled_plugins:
+        if settings.remote_fs is None:
+            errors.append("remote_fs: missing remote_fs section in config.yaml")
+        elif not settings.remote_fs.roots:
+            errors.append("remote_fs: remote_fs.roots must not be empty")
+
     if "database" in settings.enabled_plugins:
         if settings.database is None:
             errors.append("database: missing database section in config.yaml")
@@ -382,6 +456,7 @@ def get_settings() -> Settings:
         enabled_plugins=_read_enabled_plugins(yaml_cfg),
         log_search=_read_log_search_settings(yaml_cfg),
         database=_read_database_settings(yaml_cfg),
+        remote_fs=_read_remote_fs_settings(yaml_cfg),
         dingtalk_webhook_url=webhook_url,
         dingtalk_secret=dingtalk_secret,
         **jira_fields,

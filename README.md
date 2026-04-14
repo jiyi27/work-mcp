@@ -10,6 +10,7 @@ Tools are grouped by plugin. Each plugin is enabled or disabled as a unit in `co
 | `dingtalk`  | `dingtalk_send_markdown`                                            |
 | `jira`      | `jira_get_latest_assigned_issue`, `jira_start_issue`, `jira_resolve_issue` |
 | `log_search` | `list_log_files`, `search_log` |
+| `remote_fs` | `get_allowed_roots`, `list_tree`, `search_files`, `read_file`, `search_file_reverse` |
 
 ## Configuration
 
@@ -136,6 +137,41 @@ log_search:
 - `list_log_files` lists one level of files and directories under the log root or a relative path.
 - `search_log` searches a single file selected from `list_log_files`.
 - `log_base_dir` should point to the top-level directory that contains your service, date, or instance log folders.
+
+### Remote FS
+
+Configure one or more read-only roots that the agent may inspect remotely.
+
+```yaml
+plugins:
+  enabled:
+    - remote_fs
+
+remote_fs:
+  roots:
+    - name: app
+      path: /srv/myapp
+      kind: code
+      description: Deployed application source
+
+    - name: logs
+      path: /var/log/myapp
+      kind: logs
+      description: Application log files
+
+    - name: config
+      path: /etc/myapp
+      kind: config
+      description: Production configuration
+```
+
+- `get_allowed_roots` returns the configured roots and their metadata.
+- `list_tree` browses directories under an allowed root.
+- `search_files` locates files or matching lines across one or more roots.
+- `read_file` reads a bounded line range from a known text file, including tail reads.
+- `search_file_reverse` scans a known text file from the end and returns the newest matches first.
+- Every configured `path` must already exist and must be a directory.
+- Roots are read-only boundaries. Tools cannot access paths outside the configured roots.
 
 ### Other `config.yaml` settings
 
