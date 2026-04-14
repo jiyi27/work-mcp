@@ -78,14 +78,8 @@ def query_truncated_hint(db_type: str) -> str:
     )
 
 
-def query_complete_hint(db_type: str) -> str:
-    engine_label = database_engine_label(db_type)
-    syntax_label = _database_syntax_label(db_type)
-    return (
-        f"The query result fit within the tool's response limit. If you need a different slice of "
-        f"data, refine the SQL with WHERE clauses, a stable ORDER BY clause, or {syntax_label} "
-        f"limiting syntax for {engine_label}."
-    )
+def query_complete_hint() -> str:
+    return "All rows were returned. Proceed with the data."
 
 
 def query_error_hint(db_type: str) -> str:

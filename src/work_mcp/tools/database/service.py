@@ -24,6 +24,23 @@ from .strings import (
 )
 
 
+def _invalid_argument(param_name: str) -> dict[str, Any]:
+    return {
+        "success": False,
+        "error_type": "invalid_argument",
+        "hint": required_param_hint(param_name),
+    }
+
+
+def _internal_error(message: str) -> dict[str, Any]:
+    return {
+        "success": False,
+        "error_type": "internal_error",
+        "message": message,
+        "hint": INTERNAL_ERROR_RETRY_HINT,
+    }
+
+
 class DatabaseService:
     def __init__(
         self,
@@ -39,7 +56,7 @@ class DatabaseService:
         try:
             databases = self._client.list_databases()
         except DatabaseConnectionError as exc:
-            return self._internal_error(str(exc))
+            return _internal_error(str(exc))
         response: dict[str, Any] = {"success": True, "databases": databases}
         if not databases:
             response["hint"] = HINT_NO_DATABASES
@@ -50,7 +67,7 @@ class DatabaseService:
     def list_tables(self, database: str) -> dict[str, Any]:
         database_name = database.strip()
         if not database_name:
-            return self._invalid_argument("database")
+            return _invalid_argument("database")
 
         try:
             tables = self._client.list_tables(database_name)
@@ -61,7 +78,7 @@ class DatabaseService:
                 "hint": HINT_DATABASE_NOT_FOUND,
             }
         except DatabaseConnectionError as exc:
-            return self._internal_error(str(exc))
+            return _internal_error(str(exc))
 
         return {"success": True, "database": database_name, "tables": tables}
 
@@ -69,9 +86,9 @@ class DatabaseService:
         database_name = database.strip()
         table_name = table.strip()
         if not database_name:
-            return self._invalid_argument("database")
+            return _invalid_argument("database")
         if not table_name:
-            return self._invalid_argument("table")
+            return _invalid_argument("table")
 
         try:
             columns = self._client.get_table_schema(database_name, table_name)
@@ -91,7 +108,7 @@ class DatabaseService:
                 ),
             }
         except DatabaseConnectionError as exc:
-            return self._internal_error(str(exc))
+            return _internal_error(str(exc))
 
         return {
             "success": True,
@@ -105,9 +122,9 @@ class DatabaseService:
         sql_text = sql.strip()
 
         if not database_name:
-            return self._invalid_argument("database")
+            return _invalid_argument("database")
         if not sql_text:
-            return self._invalid_argument("sql")
+            return _invalid_argument("sql")
 
         try:
             validate_read_only_query(sql_text)
@@ -134,7 +151,7 @@ class DatabaseService:
                 "hint": query_error_hint(self._settings.database.db_type),
             }
         except DatabaseConnectionError as exc:
-            return self._internal_error(str(exc))
+            return _internal_error(str(exc))
 
         return {
             "success": True,
@@ -146,21 +163,6 @@ class DatabaseService:
             "hint": (
                 query_truncated_hint(self._settings.database.db_type)
                 if result.truncated
-                else query_complete_hint(self._settings.database.db_type)
+                else query_complete_hint()
             ),
-        }
-
-    def _invalid_argument(self, param_name: str) -> dict[str, Any]:
-        return {
-            "success": False,
-            "error_type": "invalid_argument",
-            "hint": required_param_hint(param_name),
-        }
-
-    def _internal_error(self, message: str) -> dict[str, Any]:
-        return {
-            "success": False,
-            "error_type": "internal_error",
-            "message": message,
-            "hint": INTERNAL_ERROR_RETRY_HINT,
         }

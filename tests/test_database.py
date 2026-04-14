@@ -216,7 +216,7 @@ def test_database_service_returns_successful_query_result() -> None:
         "rows": [[1, "pending"], [2, "done"], [3, "failed"]],
         "row_count": 3,
         "truncated": False,
-        "hint": "The query result fit within the tool's response limit. If you need a different slice of data, refine the SQL with WHERE clauses, a stable ORDER BY clause, or SQL Server-compatible limiting syntax for SQL Server.",
+        "hint": "All rows were returned. Proceed with the data.",
     }
 
 
