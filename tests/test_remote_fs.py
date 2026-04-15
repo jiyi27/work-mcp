@@ -137,7 +137,7 @@ class TestListTree:
         svc = _make_service((root_a, root_b))
         result = svc.list_tree(str(root_a), depth=1)
         assert result["success"] is True
-        names = {e["name"] for e in result["entries"]}
+        names = {Path(e["path"]).name for e in result["entries"]}
         assert "app.py" in names
         assert "config" in names
         assert "utils" in names
@@ -148,7 +148,7 @@ class TestListTree:
         svc = _make_service((root_a, root_b))
         result = svc.list_tree(str(root_a), depth=2)
         assert result["success"] is True
-        names = {e["name"] for e in result["entries"]}
+        names = {Path(e["path"]).name for e in result["entries"]}
         # Should include nested files
         assert "settings.yaml" in names
         assert "helpers.py" in names

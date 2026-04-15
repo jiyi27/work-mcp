@@ -4,7 +4,6 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -60,12 +59,6 @@ def _is_binary(path: Path) -> bool:
         return b"\x00" in chunk
     except OSError:
         return False
-
-
-def _format_mtime(timestamp: float) -> str:
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
 
 
 def _matches_path_glob(relative_path: Path, path_glob: str) -> bool:
@@ -213,17 +206,9 @@ class RemoteFsService:
         for child in children:
             if len(entries) > MAX_TREE_ENTRIES:
                 return
-            try:
-                stat = child.stat()
-            except OSError:
-                continue
             entry: dict[str, Any] = {
                 "path": str(child),
-                "name": child.name,
                 "type": "directory" if child.is_dir() else "file",
-                "size": stat.st_size if not child.is_dir() else None,
-                "mtime": _format_mtime(stat.st_mtime),
-                "depth": current_depth,
             }
             entries.append(entry)
             if child.is_dir() and current_depth < max_depth:
