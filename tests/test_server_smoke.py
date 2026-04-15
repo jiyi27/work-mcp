@@ -227,7 +227,7 @@ def test_enabled_plugins_can_register_remote_fs_with_remote_prefixed_names(
     tools = asyncio.run(mcp.list_tools())
 
     assert [tool.name for tool in tools] == [
-        "remote_get_allowed_roots",
+        "remote_describe_environment",
         "remote_list_tree",
         "remote_search_files",
         "remote_read_file",

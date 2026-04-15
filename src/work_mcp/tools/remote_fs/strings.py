@@ -10,7 +10,7 @@ from .constants import (
 # ---------------------------------------------------------------------------
 # Tool names — single source of truth for registrations and cross-tool hints.
 # ---------------------------------------------------------------------------
-TOOL_GET_ALLOWED_ROOTS = "remote_get_allowed_roots"
+TOOL_DESCRIBE_ENVIRONMENT = "remote_describe_environment"
 TOOL_LIST_TREE = "remote_list_tree"
 TOOL_SEARCH_FILES = "remote_search_files"
 TOOL_READ_FILE = "remote_read_file"
@@ -19,17 +19,20 @@ TOOL_SEARCH_FILE_REVERSE = "remote_search_file_reverse"
 # ---------------------------------------------------------------------------
 # Tool descriptions — short, agent-oriented.
 # ---------------------------------------------------------------------------
-GET_ALLOWED_ROOTS_DESCRIPTION = """\
-Inspect the remote server filesystem exposed by this MCP server, not the local workspace.
+DESCRIBE_ENVIRONMENT_DESCRIPTION = """\
+Return the remote server's root directories with their paths, roles, and descriptions.
 
-Use this first when the user asks about a server, test machine, deployed environment,
-remote logs, remote config, nginx, sync status, or runtime files outside the current repo.
+Use this early in a remote-debugging session to learn what environment information is
+available here, such as where synced project code, logs, config, runtime files, or
+other useful server-side resources might live.
+
+Skip this if the relevant roots are already known from earlier in the conversation.
 """
 
 LIST_TREE_DESCRIPTION = """\
 List the direct children of a known directory on the remote server filesystem, not the local workspace.
 
-Use this after remote_get_allowed_roots to explore an unfamiliar remote directory one level at a time.
+Use this after remote_describe_environment to explore an unfamiliar remote directory one level at a time.
 """
 
 SEARCH_FILES_DESCRIPTION = """\
@@ -43,7 +46,7 @@ For filename-only search, leave query empty and use path_glob.
 READ_FILE_DESCRIPTION = """\
 Read a selected text range from a known file on the remote server filesystem, not the local workspace.
 
-Use this only after identifying the remote path through remote_get_allowed_roots, remote_list_tree, or remote_search_files.
+Use this only after identifying the remote path through remote_describe_environment, remote_list_tree, or remote_search_files.
 """
 
 SEARCH_FILE_REVERSE_DESCRIPTION = """\
@@ -62,7 +65,7 @@ HINT_PATH_NOT_ALLOWED = (
 
 HINT_PATH_NOT_FOUND = (
     "The path does not exist. Do not guess a replacement path. Use "
-    f"{TOOL_GET_ALLOWED_ROOTS}, {TOOL_LIST_TREE}, or {TOOL_SEARCH_FILES} "
+    f"{TOOL_DESCRIBE_ENVIRONMENT}, {TOOL_LIST_TREE}, or {TOOL_SEARCH_FILES} "
     "to locate the correct path."
 )
 
@@ -88,11 +91,16 @@ HINT_FILE_TOO_LARGE = (
 )
 
 # ---------------------------------------------------------------------------
-# get_allowed_roots hints
+# describe_environment hints
 # ---------------------------------------------------------------------------
 HINT_ROOTS_FOUND = (
-    "The available roots are now known. Choose a root and continue with "
-    f"{TOOL_LIST_TREE} or {TOOL_SEARCH_FILES}."
+    "The remote environment description may include useful roots such as code, logs, "
+    "config, or runtime data, and it may also omit information you still need. If the "
+    "returned roots are enough, continue with "
+    f"{TOOL_LIST_TREE} or {TOOL_SEARCH_FILES}. If something is still unclear, explore "
+    "within those returned roots first. You can only access the roots returned here; "
+    "files outside them are not accessible. If the needed path or resource appears to "
+    "be outside those roots, stop and ask the user to help resolve that gap."
 )
 
 HINT_NO_ROOTS = (

@@ -7,12 +7,12 @@ from mcp.server.fastmcp import FastMCP
 from ...config import Settings
 from .service import RemoteFsService
 from .strings import (
-    GET_ALLOWED_ROOTS_DESCRIPTION,
+    DESCRIBE_ENVIRONMENT_DESCRIPTION,
     LIST_TREE_DESCRIPTION,
     READ_FILE_DESCRIPTION,
     SEARCH_FILE_REVERSE_DESCRIPTION,
     SEARCH_FILES_DESCRIPTION,
-    TOOL_GET_ALLOWED_ROOTS,
+    TOOL_DESCRIBE_ENVIRONMENT,
     TOOL_LIST_TREE,
     TOOL_READ_FILE,
     TOOL_SEARCH_FILE_REVERSE,
@@ -23,7 +23,10 @@ from .strings import (
 def register_remote_fs_tools(mcp: FastMCP, settings: Settings) -> None:
     svc = RemoteFsService(settings.remote_fs)  # type: ignore[arg-type]
 
-    @mcp.tool(name=TOOL_GET_ALLOWED_ROOTS, description=GET_ALLOWED_ROOTS_DESCRIPTION)
+    @mcp.tool(
+        name=TOOL_DESCRIBE_ENVIRONMENT,
+        description=DESCRIBE_ENVIRONMENT_DESCRIPTION,
+    )
     def get_allowed_roots() -> dict[str, Any]:
         return svc.get_allowed_roots()
 
