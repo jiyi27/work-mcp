@@ -4,40 +4,52 @@ from ...hints import STOP_AND_NOTIFY_USER_INSTRUCTION
 from .constants import (
     MAX_FILE_SIZE_MB,
     MAX_SEARCH_MATCHES,
-    MAX_TREE_DEPTH,
     MAX_TREE_ENTRIES,
 )
 
 # ---------------------------------------------------------------------------
 # Tool names — single source of truth for registrations and cross-tool hints.
 # ---------------------------------------------------------------------------
-TOOL_GET_ALLOWED_ROOTS = "get_allowed_roots"
-TOOL_LIST_TREE = "list_tree"
-TOOL_SEARCH_FILES = "search_files"
-TOOL_READ_FILE = "read_file"
-TOOL_SEARCH_FILE_REVERSE = "search_file_reverse"
+TOOL_GET_ALLOWED_ROOTS = "remote_get_allowed_roots"
+TOOL_LIST_TREE = "remote_list_tree"
+TOOL_SEARCH_FILES = "remote_search_files"
+TOOL_READ_FILE = "remote_read_file"
+TOOL_SEARCH_FILE_REVERSE = "remote_search_file_reverse"
 
 # ---------------------------------------------------------------------------
 # Tool descriptions — short, agent-oriented.
 # ---------------------------------------------------------------------------
 GET_ALLOWED_ROOTS_DESCRIPTION = """\
-Return the list of server directories the agent may inspect.
+Inspect the remote server filesystem exposed by this MCP server, not the local workspace.
+
+Use this first when the user asks about a server, test machine, deployed environment,
+remote logs, remote config, nginx, sync status, or runtime files outside the current repo.
 """
 
 LIST_TREE_DESCRIPTION = """\
-Return a directory listing for a path under an allowed root.
+List the direct children of a known directory on the remote server filesystem, not the local workspace.
+
+Use this after remote_get_allowed_roots to explore an unfamiliar remote directory one level at a time.
 """
 
 SEARCH_FILES_DESCRIPTION = """\
-Search file contents or file names under allowed roots.
+Search file contents or file names on the remote server filesystem, not the local workspace.
+
+Use this for remote config, deployed code, nginx, entrypoints, bootstrap files, or server-side logs.
+
+For filename-only search, leave query empty and use path_glob.
 """
 
 READ_FILE_DESCRIPTION = """\
-Read a selected range from a known file.
+Read a selected text range from a known file on the remote server filesystem, not the local workspace.
+
+Use this only after identifying the remote path through remote_get_allowed_roots, remote_list_tree, or remote_search_files.
 """
 
 SEARCH_FILE_REVERSE_DESCRIPTION = """\
-Search a known file from the end and return the newest matches first.
+Search a known remote text file from the end and return the newest matches first.
+
+Use this for server or test-machine log inspection when the remote log path is already known.
 """
 
 # ---------------------------------------------------------------------------
@@ -93,23 +105,15 @@ HINT_NO_ROOTS = (
 # list_tree hints
 # ---------------------------------------------------------------------------
 HINT_LIST_TREE_COMPLETE = (
-    "The directory listing is complete. If you already know the target file, "
-    f"use {TOOL_READ_FILE}. Otherwise use {TOOL_SEARCH_FILES} to narrow the search."
+    "The directory listing is complete. Choose a relevant subdirectory and call "
+    f"{TOOL_LIST_TREE} again, or use {TOOL_READ_FILE} or {TOOL_SEARCH_FILES} if "
+    "you already know the target."
 )
-
-def build_list_tree_depth_limited_hint(requested_depth: int) -> str:
-    return (
-        f"The requested depth ({requested_depth}) exceeds the server limit. "
-        f"The listing was generated with depth={MAX_TREE_DEPTH}. "
-        f"If you need deeper content, call {TOOL_LIST_TREE} again on a more specific "
-        f"subdirectory or use {TOOL_SEARCH_FILES} to narrow the target."
-    )
 
 
 def build_list_tree_truncated_hint(offset: int, next_offset: int) -> str:
     return (
         f"The directory listing reached the server limit ({MAX_TREE_ENTRIES} entries). "
-        "Results are sorted by most recent modification time first. "
         f"If you need more entries, call {TOOL_LIST_TREE} again with offset={next_offset}. "
         f"This page started at offset={offset}. If you already know a narrower target, "
         f"use {TOOL_SEARCH_FILES} with a narrower root or path_glob."
@@ -121,18 +125,12 @@ def build_list_tree_hint(
     truncated: bool,
     offset: int,
     next_offset: int,
-    requested_depth: int,
-    effective_depth: int,
 ) -> str:
-    hint_parts: list[str] = []
-    if requested_depth > effective_depth:
-        hint_parts.append(build_list_tree_depth_limited_hint(requested_depth))
-    hint_parts.append(
+    return (
         build_list_tree_truncated_hint(offset, next_offset)
         if truncated
         else HINT_LIST_TREE_COMPLETE
     )
-    return " ".join(hint_parts)
 
 HINT_LIST_TREE_PATH_NOT_FOUND = (
     "The directory path does not exist. Verify the path against the allowed "
@@ -148,8 +146,8 @@ HINT_LIST_TREE_INVALID_OFFSET = (
 # search_files hints
 # ---------------------------------------------------------------------------
 HINT_SEARCH_COMPLETE = (
-    "Matches were found. Pick the most relevant path and line, then use "
-    f"{TOOL_READ_FILE} to read a small range around that location."
+    "Matches were found. Pick the most relevant file, then use "
+    f"{TOOL_READ_FILE} to read a small range around the returned line."
 )
 
 HINT_SEARCH_TRUNCATED = (
@@ -161,7 +159,8 @@ HINT_SEARCH_TRUNCATED = (
 HINT_SEARCH_NO_MATCHES = (
     "No matches were found. Check the query text, file pattern, and chosen "
     "root. If the target is a log file and you already know its path, use "
-    f"{TOOL_SEARCH_FILE_REVERSE} instead of broad cross-file search."
+    f"{TOOL_SEARCH_FILE_REVERSE} instead of broad cross-file search. For filename-only "
+    "search, leave query empty and set path_glob."
 )
 
 HINT_SEARCH_INVALID_REGEX = (

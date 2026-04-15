@@ -10,13 +10,16 @@ from typing import Any
 import yaml
 
 from .config import (
+    CONFIG_FILE_LABEL,
     DB_TYPE_MYSQL,
     DB_TYPE_SQLSERVER,
+    ConfigError,
     DEFAULT_DB_CONNECT_TIMEOUT_SECONDS,
     DEFAULT_DB_DRIVER,
     DEFAULT_DB_PORTS,
     PROJECT_ROOT,
     YAML_CONFIG_FILE,
+    _format_yaml_error,
 )
 from .tools.database.factory import check_database_connectivity
 
@@ -66,10 +69,19 @@ def yaml_config_path(project_root: Path = PROJECT_ROOT) -> Path:
 def load_existing_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    with path.open(encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
+    try:
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+    except OSError as exc:
+        raise ConfigError(
+            f"Cannot read {CONFIG_FILE_LABEL} at {path}: {exc.strerror or exc}"
+        ) from None
+    except yaml.YAMLError as exc:
+        raise ConfigError(_format_yaml_error(path, exc)) from None
     if not isinstance(loaded, dict):
-        raise RuntimeError("Invalid config.yaml. Expected a mapping at the document root.")
+        raise ConfigError(
+            f"Invalid {CONFIG_FILE_LABEL} at {path}: expected a mapping at the document root."
+        )
     return loaded
 
 

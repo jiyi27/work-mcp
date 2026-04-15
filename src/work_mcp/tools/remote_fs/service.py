@@ -13,6 +13,7 @@ from ...config import RemoteFsSettings
 from .constants import (
     BINARY_CHECK_BYTES,
     DEFAULT_READ_LINES,
+    HIDE_TOP_LEVEL_DOTFILES,
     LIST_TREE_IGNORED_DIRECTORY_NAMES,
     LIST_TREE_IGNORED_DIRECTORY_SUFFIXES,
     MAX_CONTEXT_LINES,
@@ -20,7 +21,6 @@ from .constants import (
     MAX_READ_LINES,
     MAX_REVERSE_MATCHES,
     MAX_SEARCH_MATCHES,
-    MAX_TREE_DEPTH,
     MAX_TREE_ENTRIES,
 )
 from .path_guard import PathNotAllowedError, resolve_allowed_path
@@ -83,8 +83,26 @@ def _should_skip_tree_directory(path: Path) -> bool:
     )
 
 
-def _normalized_tree_depth(depth: int) -> int:
-    return min(max(1, depth), MAX_TREE_DEPTH)
+def _is_hidden(path: Path) -> bool:
+    return path.name.startswith(".")
+
+
+def _should_skip_root_level_entry(parent: Path, child: Path) -> bool:
+    if not HIDE_TOP_LEVEL_DOTFILES:
+        return False
+    return parent == child.parent and _is_hidden(child)
+
+
+def _apply_directory_filters(dirnames: list[str], current: Path, root: Path) -> None:
+    kept = []
+    for dirname in dirnames:
+        child = current / dirname
+        if _should_skip_tree_directory(child):
+            continue
+        if current == root and _should_skip_root_level_entry(current, child):
+            continue
+        kept.append(dirname)
+    dirnames[:] = kept
 
 
 class RemoteFsService:
@@ -178,9 +196,7 @@ class RemoteFsService:
     # list_tree
     # ------------------------------------------------------------------
 
-    def list_tree(self, path: str, depth: int, offset: int) -> dict[str, Any]:
-        requested_depth = depth
-        depth = _normalized_tree_depth(depth)
+    def list_tree(self, path: str, offset: int) -> dict[str, Any]:
         if offset < 0:
             return {
                 "success": False,
@@ -196,11 +212,11 @@ class RemoteFsService:
         # Each item describes one file or directory found during the walk,
         # e.g. {"path": "/data/a.txt", "type": "file"}
         fs_nodes: list[dict[str, Any]] = []
-        self._walk_tree(dir_path, depth, 1, fs_nodes)
+        self._walk_tree(dir_path, fs_nodes)
         fs_nodes.sort(
             key=lambda entry: (
-                -entry["modified_at"],
-                Path(entry["path"]).relative_to(dir_path).as_posix(),
+                0 if entry["type"] == "directory" else 1,
+                Path(entry["path"]).name,
             )
         )
         total_count = len(fs_nodes)
@@ -225,37 +241,25 @@ class RemoteFsService:
                 truncated=truncated,
                 offset=offset,
                 next_offset=next_offset,
-                requested_depth=requested_depth,
-                effective_depth=depth,
             ),
         }
 
-    def _walk_tree(
-        self,
-        current: Path,
-        max_depth: int,
-        current_depth: int,
-        entries: list[dict[str, Any]],
-    ) -> None:
-        if current_depth > max_depth:
-            return
-
+    def _walk_tree(self, current: Path, entries: list[dict[str, Any]]) -> None:
         try:
             children = sorted(current.iterdir(), key=lambda p: p.name)
         except PermissionError:
             return
 
         for child in children:
+            if _should_skip_root_level_entry(current, child):
+                continue
             if child.is_dir() and _should_skip_tree_directory(child):
                 continue
             entry: dict[str, Any] = {
                 "path": str(child),
                 "type": "directory" if child.is_dir() else "file",
-                "modified_at": child.stat().st_mtime,
             }
             entries.append(entry)
-            if child.is_dir() and current_depth < max_depth:
-                self._walk_tree(child, max_depth, current_depth + 1, entries)
 
     # ------------------------------------------------------------------
     # search_files
@@ -313,7 +317,7 @@ class RemoteFsService:
                     "hint": HINT_SEARCH_INVALID_REGEX,
                 }
 
-        # Each item is a matched file location, e.g. {"path": "/data/a.txt", "line": 42, "preview": "..."}
+        # Each item is a matched file, e.g. {"path": "/data/a.txt", "line": 42, "preview": "..."}
         search_hits: list[dict[str, Any]] = []
         truncated = False
 
@@ -348,13 +352,17 @@ class RemoteFsService:
         max_matches: int,
         search_hits: list[dict[str, Any]],
     ) -> bool:
-        """Walk files under root and collect matches. Returns True if truncated."""
-        for dirpath, _dirnames, filenames in os.walk(root):
+        """Walk files under root and collect one result per matched file."""
+        for dirpath, dirnames, filenames in os.walk(root):
+            current_dir = Path(dirpath)
+            _apply_directory_filters(dirnames, current_dir, root)
             for filename in filenames:
                 if len(search_hits) >= max_matches:
                     return True
 
-                file_path = Path(dirpath) / filename
+                file_path = current_dir / filename
+                if current_dir == root and _should_skip_root_level_entry(current_dir, file_path):
+                    continue
 
                 # Apply glob filter on the path relative to root.
                 if path_glob:
@@ -367,6 +375,7 @@ class RemoteFsService:
                     search_hits.append({
                         "path": str(file_path),
                         "line": None,
+                        "match_count": 0,
                         "preview": None,
                     })
                     continue
@@ -381,21 +390,28 @@ class RemoteFsService:
                         file_path, encoding="utf-8", errors="replace",
                     ) as f:
                         line_no = 0
+                        first_match_line: int | None = None
+                        first_preview: str | None = None
+                        match_count = 0
                         async for line in f:
                             line_no += 1
-                            if len(search_hits) >= max_matches:
-                                return True
                             hit = False
                             if pattern is not None:
                                 hit = pattern.search(line) is not None
                             else:
                                 hit = normalized_query in line.lower()
                             if hit:
-                                search_hits.append({
-                                    "path": str(file_path),
-                                    "line": line_no,
-                                    "preview": line.rstrip("\n\r"),
-                                })
+                                match_count += 1
+                                if first_match_line is None:
+                                    first_match_line = line_no
+                                    first_preview = line.rstrip("\n\r")
+                        if first_match_line is not None:
+                            search_hits.append({
+                                "path": str(file_path),
+                                "line": first_match_line,
+                                "match_count": match_count,
+                                "preview": first_preview,
+                            })
                 except OSError:
                     continue
 

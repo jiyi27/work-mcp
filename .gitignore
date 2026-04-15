@@ -25,3 +25,5 @@ logs/
 *.zip
 *.tar.gz
 *.egg
+.mcp.json
+.claude/

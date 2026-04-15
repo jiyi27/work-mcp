@@ -24,6 +24,7 @@ DEFAULT_DB_PORTS = {
 DEFAULT_DB_DRIVER = "ODBC Driver 18 for SQL Server"
 DEFAULT_DB_CONNECT_TIMEOUT_SECONDS = 5
 DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS = 10
+CONFIG_FILE_LABEL = "config.yaml"
 
 
 @dataclass(frozen=True)
@@ -96,13 +97,58 @@ class Settings:
     remote_fs: RemoteFsSettings | None = None
 
 
+class ConfigError(RuntimeError):
+    """User-fixable configuration error."""
+
+
+def _config_error(message: str) -> ConfigError:
+    return ConfigError(message)
+
+
+def _format_yaml_error(path: Path, exc: yaml.YAMLError) -> str:
+    mark = getattr(exc, "problem_mark", None)
+    problem = getattr(exc, "problem", None)
+    detail = str(problem or exc).strip()
+    if mark is None:
+        return f"Invalid {CONFIG_FILE_LABEL} at {path}: YAML syntax error: {detail}"
+    line = mark.line + 1
+    column = mark.column + 1
+    return (
+        f"Invalid {CONFIG_FILE_LABEL} at {path}: "
+        f"YAML syntax error at line {line}, column {column}: {detail}"
+    )
+
+
+def _load_yaml_mapping(path: Path) -> dict[str, Any]:
+    try:
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+    except OSError as exc:
+        raise _config_error(f"Cannot read {CONFIG_FILE_LABEL} at {path}: {exc.strerror or exc}") from None
+    except yaml.YAMLError as exc:
+        raise _config_error(_format_yaml_error(path, exc)) from None
+    if not isinstance(loaded, dict):
+        raise _config_error(
+            f"Invalid {CONFIG_FILE_LABEL} at {path}: expected a mapping at the document root."
+        )
+    return loaded
+
+
+def _read_int(raw_value: Any, field_name: str) -> int:
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        raise _config_error(
+            f"Invalid {field_name} in {CONFIG_FILE_LABEL}. Expected an integer."
+        ) from None
+
+
 def load_yaml_config(yaml_path: Path | None = None) -> dict[str, Any]:
     """Load configuration from config.yaml."""
     path = yaml_path or PROJECT_ROOT / YAML_CONFIG_FILE
     if not path.exists():
         return {}
-    with path.open(encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return _load_yaml_mapping(path)
 
 
 def default_server_settings() -> ServerSettings:
@@ -168,12 +214,10 @@ def _read_startup_settings(yaml_cfg: dict[str, Any]) -> StartupSettings:
         "timeout_seconds",
         DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS,
     )
-    try:
-        timeout_seconds = int(raw_timeout_seconds)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            "Invalid startup.healthcheck.timeout_seconds in config.yaml. Expected an integer."
-        ) from exc
+    timeout_seconds = _read_int(
+        raw_timeout_seconds,
+        "startup.healthcheck.timeout_seconds",
+    )
 
     return StartupSettings(
         healthcheck=StartupHealthcheckSettings(
@@ -296,8 +340,11 @@ def _read_jira_settings(yaml_cfg: dict[str, Any]) -> dict[str, Any]:
     yaml_attachments = yaml_jira.get("attachments", {})
     if not isinstance(yaml_attachments, dict):
         raise RuntimeError("Invalid jira.attachments in config.yaml. Expected a mapping.")
-    max_images = int(yaml_attachments.get("max_images", 5))
-    max_bytes = int(yaml_attachments.get("max_bytes_per_image", 1_048_576))
+    max_images = _read_int(yaml_attachments.get("max_images", 5), "jira.attachments.max_images")
+    max_bytes = _read_int(
+        yaml_attachments.get("max_bytes_per_image", 1_048_576),
+        "jira.attachments.max_bytes_per_image",
+    )
 
     return {
         "jira_base_url": base_url,
@@ -331,12 +378,7 @@ def _read_database_settings(yaml_cfg: dict[str, Any]) -> DatabaseSettings | None
     db_type = _read_text(yaml_db.get("type")).lower()
 
     raw_port = yaml_db.get("port", _default_db_port(db_type))
-    try:
-        port = int(raw_port)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            "Invalid database.port in config.yaml. Expected an integer."
-        ) from exc
+    port = _read_int(raw_port, "database.port")
 
     raw_trust_cert = yaml_db.get("trust_server_certificate", False)
     if not isinstance(raw_trust_cert, bool):
@@ -345,12 +387,10 @@ def _read_database_settings(yaml_cfg: dict[str, Any]) -> DatabaseSettings | None
         )
 
     raw_timeout = yaml_db.get("connect_timeout_seconds", DEFAULT_DB_CONNECT_TIMEOUT_SECONDS)
-    try:
-        connect_timeout_seconds = int(raw_timeout)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            "Invalid database.connect_timeout_seconds in config.yaml. Expected an integer."
-        ) from exc
+    connect_timeout_seconds = _read_int(
+        raw_timeout,
+        "database.connect_timeout_seconds",
+    )
 
     return DatabaseSettings(
         db_type=db_type,

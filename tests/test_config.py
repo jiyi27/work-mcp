@@ -135,6 +135,42 @@ def test_get_settings_requires_plugins_section(
         config_module.get_settings()
 
 
+def test_get_settings_reports_yaml_syntax_errors_with_location(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins:
+  enabled:
+    - remote_fs
+remote_fs:
+  roots:
+    - name: app
+      path: /tmp
+      kind: workplace
+      description: first line
+  second line without colon
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match=r"YAML syntax error at line \d+, column \d+"):
+        config_module.get_settings()
+
+
+def test_get_settings_requires_mapping_at_document_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text("- database\n- jira\n", encoding="utf-8")
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="expected a mapping at the document root"):
+        config_module.get_settings()
+
+
 def test_get_settings_requires_plugins_enabled_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

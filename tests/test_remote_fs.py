@@ -13,7 +13,6 @@ from work_mcp.tools.remote_fs.path_guard import (
 )
 from work_mcp.tools.remote_fs.constants import (
     MAX_FILE_SIZE_BYTES,
-    MAX_TREE_DEPTH,
     MAX_TREE_ENTRIES,
 )
 from work_mcp.tools.remote_fs.service import RemoteFsService
@@ -137,10 +136,10 @@ class TestGetAllowedRoots:
 
 
 class TestListTree:
-    def test_list_root_depth_1(self, sample_tree: tuple[Path, Path]) -> None:
+    def test_list_root_returns_direct_children_only(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a), depth=1, offset=0)
+        result = svc.list_tree(str(root_a), offset=0)
         assert result["success"] is True
         names = {Path(e["path"]).name for e in result["entries"]}
         assert "app.py" in names
@@ -151,45 +150,46 @@ class TestListTree:
         assert result["returned_count"] == 3
         assert result["next_offset"] == 3
 
-    def test_list_deeper_depth(self, sample_tree: tuple[Path, Path]) -> None:
+    def test_list_tree_does_not_expand_nested_entries(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a), depth=2, offset=0)
+        result = svc.list_tree(str(root_a), offset=0)
         assert result["success"] is True
-        names = {Path(e["path"]).name for e in result["entries"]}
-        # Should include nested files
-        assert "settings.yaml" in names
-        assert "helpers.py" in names
+        returned_paths = {Path(e["path"]).relative_to(root_a).as_posix() for e in result["entries"]}
+        assert "config" in returned_paths
+        assert "utils" in returned_paths
+        assert "config/settings.yaml" not in returned_paths
+        assert "utils/helpers.py" not in returned_paths
 
     def test_path_not_allowed(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree("/etc", depth=1, offset=0)
+        result = svc.list_tree("/etc", offset=0)
         assert result["success"] is False
         assert result["error_type"] == "path_not_allowed"
 
     def test_path_not_found(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a / "nonexistent"), depth=1, offset=0)
+        result = svc.list_tree(str(root_a / "nonexistent"), offset=0)
         assert result["success"] is False
         assert result["error_type"] == "path_not_found"
 
     def test_not_a_directory(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a / "app.py"), depth=1, offset=0)
+        result = svc.list_tree(str(root_a / "app.py"), offset=0)
         assert result["success"] is False
         assert result["error_type"] == "not_a_directory"
 
     def test_negative_offset_is_rejected(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a), depth=1, offset=-1)
+        result = svc.list_tree(str(root_a), offset=-1)
         assert result["success"] is False
         assert result["error_type"] == "invalid_argument"
 
-    def test_offset_pages_through_stable_recently_modified_listing(
+    def test_offset_pages_through_stable_directory_first_name_sorted_listing(
         self, root_dirs: tuple[Path, Path]
     ) -> None:
         root_a, root_b = root_dirs
@@ -201,8 +201,8 @@ class TestListTree:
 
         svc = _make_service((root_a, root_b))
 
-        first_page = svc.list_tree(str(root_a), depth=1, offset=0)
-        second_page = svc.list_tree(str(root_a), depth=1, offset=MAX_TREE_ENTRIES)
+        first_page = svc.list_tree(str(root_a), offset=0)
+        second_page = svc.list_tree(str(root_a), offset=MAX_TREE_ENTRIES)
 
         assert first_page["success"] is True
         assert first_page["truncated"] is True
@@ -211,11 +211,10 @@ class TestListTree:
         assert first_page["next_offset"] == MAX_TREE_ENTRIES
         assert str(MAX_TREE_ENTRIES) in first_page["hint"]
         assert f"offset={MAX_TREE_ENTRIES}" in first_page["hint"]
-        assert "most recent modification time first" in first_page["hint"]
 
         first_names = [Path(entry["path"]).name for entry in first_page["entries"]]
         assert first_names == [
-            f"file_{index:03d}.txt" for index in range(104, 4, -1)
+            f"file_{index:03d}.txt" for index in range(100)
         ]
 
         assert second_page["success"] is True
@@ -224,69 +223,34 @@ class TestListTree:
         assert second_page["returned_count"] == 5
         assert second_page["next_offset"] == MAX_TREE_ENTRIES + 5
         second_names = [Path(entry["path"]).name for entry in second_page["entries"]]
-        assert second_names == [f"file_{index:03d}.txt" for index in range(4, -1, -1)]
+        assert second_names == [f"file_{index:03d}.txt" for index in range(100, 105)]
 
-    def test_same_timestamp_falls_back_to_relative_path_order(
+    def test_directories_are_sorted_before_files_then_by_name(
         self, root_dirs: tuple[Path, Path]
     ) -> None:
         root_a, root_b = root_dirs
-        first = root_a / "b.txt"
-        second = root_a / "a.txt"
-        first.write_text("b\n")
-        second.write_text("a\n")
-        timestamp = 1_700_000_000
-        os.utime(first, (timestamp, timestamp))
-        os.utime(second, (timestamp, timestamp))
+        (root_a / "b.txt").write_text("b\n")
+        (root_a / "a.txt").write_text("a\n")
+        (root_a / "z_dir").mkdir()
+        (root_a / "m_dir").mkdir()
 
         svc = _make_service((root_a, root_b))
 
-        result = svc.list_tree(str(root_a), depth=1, offset=0)
+        result = svc.list_tree(str(root_a), offset=0)
 
         assert result["success"] is True
-        assert [Path(entry["path"]).name for entry in result["entries"]] == ["a.txt", "b.txt"]
+        assert [Path(entry["path"]).name for entry in result["entries"]] == [
+            "m_dir",
+            "z_dir",
+            "a.txt",
+            "b.txt",
+        ]
 
-    def test_depth_is_limited_and_reported_in_hint(self, root_dirs: tuple[Path, Path]) -> None:
-        root_a, root_b = root_dirs
-        (root_a / "level1").mkdir()
-        (root_a / "level1" / "level2").mkdir()
-        (root_a / "level1" / "level2" / "level3").mkdir()
-        (root_a / "level1" / "level2" / "level3" / "level4.py").write_text("print('deep')\n")
-
-        svc = _make_service((root_a, root_b))
-
-        result = svc.list_tree(str(root_a), depth=MAX_TREE_DEPTH + 5, offset=0)
-
-        assert result["success"] is True
-        returned_paths = {Path(entry["path"]).relative_to(root_a).as_posix() for entry in result["entries"]}
-        assert "level1" in returned_paths
-        assert "level1/level2" in returned_paths
-        assert "level1/level2/level3" in returned_paths
-        assert "level1/level2/level3/level4.py" not in returned_paths
-        assert f"depth={MAX_TREE_DEPTH}" in result["hint"]
-        assert "more specific subdirectory" in result["hint"]
-
-    def test_depth_limit_hint_is_preserved_when_listing_is_truncated(
+    def test_skips_root_hidden_entries_and_known_noise_directories(
         self, root_dirs: tuple[Path, Path]
     ) -> None:
         root_a, root_b = root_dirs
-        for index in range(MAX_TREE_ENTRIES + 5):
-            path = root_a / f"file_{index:03d}.txt"
-            path.write_text(f"{index}\n")
-            timestamp = 1_700_000_000 + index
-            os.utime(path, (timestamp, timestamp))
-
-        svc = _make_service((root_a, root_b))
-
-        result = svc.list_tree(str(root_a), depth=MAX_TREE_DEPTH + 1, offset=0)
-
-        assert result["success"] is True
-        assert result["truncated"] is True
-        assert f"depth={MAX_TREE_DEPTH}" in result["hint"]
-        assert f"offset={MAX_TREE_ENTRIES}" in result["hint"]
-        assert "most recent modification time first" in result["hint"]
-
-    def test_skips_repository_and_cache_directories(self, root_dirs: tuple[Path, Path]) -> None:
-        root_a, root_b = root_dirs
+        (root_a / ".env").write_text("SECRET=1\n")
         (root_a / ".git").mkdir()
         (root_a / ".git" / "objects").mkdir()
         (root_a / ".git" / "config").write_text("[core]\n")
@@ -307,20 +271,16 @@ class TestListTree:
 
         svc = _make_service((root_a, root_b))
 
-        result = svc.list_tree(str(root_a), depth=3, offset=0)
+        result = svc.list_tree(str(root_a), offset=0)
 
         assert result["success"] is True
         returned_paths = {Path(entry["path"]).relative_to(root_a).as_posix() for entry in result["entries"]}
         assert "src" in returned_paths
-        assert "src/main.py" in returned_paths
+        assert "src/main.py" not in returned_paths
+        assert ".env" not in returned_paths
         assert ".git" not in returned_paths
-        assert ".git/config" not in returned_paths
         assert "node_modules" not in returned_paths
-        assert "node_modules/left-pad/index.js" not in returned_paths
         assert "vendor" not in returned_paths
-        assert "vendor/autoload.php" not in returned_paths
-        assert "bootstrap/cache" not in returned_paths
-        assert "bootstrap/cache/services.php" not in returned_paths
         assert "target" not in returned_paths
         assert "__pycache__" not in returned_paths
 
@@ -344,6 +304,21 @@ class TestSearchFiles:
         assert result["success"] is True
         assert len(result["matches"]) >= 1
 
+    def test_content_search_returns_one_match_per_file(self, root_dirs: tuple[Path, Path]) -> None:
+        root_a, root_b = root_dirs
+        target = root_a / "repeated.txt"
+        target.write_text("nginx\nnope\nnginx\nnginx\n")
+        svc = _make_service((root_a, root_b))
+
+        result = _run(svc.search_files("nginx", "app", "", False, 50))
+
+        assert result["success"] is True
+        repeated = [match for match in result["matches"] if match["path"] == str(target)]
+        assert len(repeated) == 1
+        assert repeated[0]["line"] == 1
+        assert repeated[0]["match_count"] == 3
+        assert repeated[0]["preview"] == "nginx"
+
     def test_glob_only_search(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
@@ -351,6 +326,7 @@ class TestSearchFiles:
         assert result["success"] is True
         matched_names = {Path(match["path"]).name for match in result["matches"]}
         assert matched_names == {"app.py", "helpers.py"}
+        assert all(match["match_count"] == 0 for match in result["matches"])
 
     def test_no_query_no_glob_rejected(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
@@ -393,6 +369,24 @@ class TestSearchFiles:
         )
         assert result["success"] is False
         assert result["error_type"] == "not_a_directory"
+
+    def test_search_skips_hidden_root_entries_and_noise_directories(
+        self, root_dirs: tuple[Path, Path]
+    ) -> None:
+        root_a, root_b = root_dirs
+        (root_a / ".env").write_text("nginx\n")
+        (root_a / "vendor").mkdir()
+        (root_a / "vendor" / "sample.txt").write_text("nginx\n")
+        (root_a / "visible.txt").write_text("nginx\n")
+        svc = _make_service((root_a, root_b))
+
+        result = _run(svc.search_files("nginx", "app", "", False, 50))
+
+        assert result["success"] is True
+        returned = {Path(match["path"]).relative_to(root_a).as_posix() for match in result["matches"]}
+        assert "visible.txt" in returned
+        assert ".env" not in returned
+        assert "vendor/sample.txt" not in returned
 
 
 class TestReadFile:

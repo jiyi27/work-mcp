@@ -3,9 +3,6 @@ from __future__ import annotations
 # Maximum entries returned by list_tree.
 MAX_TREE_ENTRIES = 100
 
-# Maximum directory depth expanded by list_tree.
-MAX_TREE_DEPTH = 3
-
 # Directory names skipped by list_tree to avoid exhausting pagination on
 # repository metadata, caches, and dependency folders.
 LIST_TREE_IGNORED_DIRECTORY_NAMES = frozenset({
@@ -50,6 +47,10 @@ LIST_TREE_IGNORED_DIRECTORY_NAMES = frozenset({
 LIST_TREE_IGNORED_DIRECTORY_SUFFIXES = (
     ("bootstrap", "cache"),
 )
+
+# Hidden files and directories are suppressed at the root listing level to
+# reduce noise and avoid exposing unrelated workstation state too early.
+HIDE_TOP_LEVEL_DOTFILES = True
 
 # Maximum matches returned by search_files.
 MAX_SEARCH_MATCHES = 20

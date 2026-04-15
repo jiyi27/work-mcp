@@ -10,7 +10,7 @@ Tools are grouped by plugin. Each plugin is enabled or disabled as a unit in `co
 | `dingtalk`  | `dingtalk_send_markdown`                                            |
 | `jira`      | `jira_get_latest_assigned_issue`, `jira_start_issue`, `jira_resolve_issue` |
 | `log_search` | `list_log_files`, `search_log` |
-| `remote_fs` | `get_allowed_roots`, `list_tree`, `search_files`, `read_file`, `search_file_reverse` |
+| `remote_fs` | `remote_get_allowed_roots`, `remote_list_tree`, `remote_search_files`, `remote_read_file`, `remote_search_file_reverse` |
 
 ## Configuration
 
@@ -165,11 +165,11 @@ remote_fs:
       description: Production configuration
 ```
 
-- `get_allowed_roots` returns the configured roots and their metadata.
-- `list_tree` browses directories under an allowed root.
-- `search_files` locates files or matching lines across one or more roots.
-- `read_file` reads a bounded line range from a known text file, including tail reads.
-- `search_file_reverse` scans a known text file from the end and returns the newest matches first.
+- `remote_get_allowed_roots` returns the configured roots and their metadata.
+- `remote_list_tree` browses directories under an allowed root.
+- `remote_search_files` locates files or matching lines across one or more roots.
+- `remote_read_file` reads a bounded line range from a known text file, including tail reads.
+- `remote_search_file_reverse` scans a known text file from the end and returns the newest matches first.
 - Every configured `path` must already exist and must be a directory.
 - Roots are read-only boundaries. Tools cannot access paths outside the configured roots.
 

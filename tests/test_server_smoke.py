@@ -10,7 +10,13 @@ from unittest.mock import patch
 
 from urllib.parse import parse_qs, urlsplit
 
-from work_mcp.config import ServerSettings, Settings, default_startup_settings
+from work_mcp.config import (
+    AllowedRoot,
+    RemoteFsSettings,
+    ServerSettings,
+    Settings,
+    default_startup_settings,
+)
 from work_mcp.server import _apply_cli_overrides, create_mcp, main
 from work_mcp.tools.jira.strings import (
     JIRA_GET_ISSUE_DETAILS_TOOL_NAME,
@@ -197,6 +203,38 @@ def test_enabled_plugins_can_register_jira_only() -> None:
     ]
 
 
+def test_enabled_plugins_can_register_remote_fs_with_remote_prefixed_names(
+    tmp_path: Path,
+) -> None:
+    remote_root = tmp_path / "remote-root"
+    remote_root.mkdir()
+    mcp = create_mcp(
+        _make_settings(
+            enabled_plugins=("remote_fs",),
+            remote_fs=RemoteFsSettings(
+                roots=(
+                    AllowedRoot(
+                        name="app",
+                        path=remote_root,
+                        kind="remote",
+                        description="Remote application root",
+                    ),
+                )
+            ),
+        )
+    )
+
+    tools = asyncio.run(mcp.list_tools())
+
+    assert [tool.name for tool in tools] == [
+        "remote_get_allowed_roots",
+        "remote_list_tree",
+        "remote_search_files",
+        "remote_read_file",
+        "remote_search_file_reverse",
+    ]
+
+
 def test_apply_cli_overrides_can_switch_to_http_mode() -> None:
     settings = _apply_cli_overrides(
         _make_settings(),
@@ -260,5 +298,26 @@ def test_main_exits_cleanly_for_failed_startup_checks(monkeypatch) -> None:
         main([])
     except SystemExit as exc:
         assert exc.code == "Error: Startup dependency checks failed:\n- jira: connectivity check failed"
+    else:
+        raise AssertionError("Expected SystemExit")
+
+
+def test_main_exits_cleanly_for_yaml_syntax_errors(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "work_mcp.server.get_settings",
+        lambda: (_ for _ in ()).throw(
+            RuntimeError(
+                "Invalid config.yaml at /tmp/config.yaml: YAML syntax error at line 12, column 3: could not find expected ':'"
+            )
+        ),
+    )
+
+    try:
+        main([])
+    except SystemExit as exc:
+        assert (
+            exc.code
+            == "Error: Invalid config.yaml at /tmp/config.yaml: YAML syntax error at line 12, column 3: could not find expected ':'"
+        )
     else:
         raise AssertionError("Expected SystemExit")
