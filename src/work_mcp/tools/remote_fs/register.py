@@ -31,8 +31,9 @@ def register_remote_fs_tools(mcp: FastMCP, settings: Settings) -> None:
     def list_tree(
         path: str,
         depth: Annotated[int, "Number of directory levels to expand."] = 1,
+        offset: Annotated[int, "Zero-based offset for continuing a truncated listing."] = 0,
     ) -> dict[str, Any]:
-        return svc.list_tree(path, depth)
+        return svc.list_tree(path, depth, offset)
 
     @mcp.tool(name=TOOL_SEARCH_FILES, description=SEARCH_FILES_DESCRIPTION)
     async def search_files(

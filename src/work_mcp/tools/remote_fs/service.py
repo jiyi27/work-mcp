@@ -25,8 +25,8 @@ from .strings import (
     HINT_BINARY_FILE_NOT_SUPPORTED,
     HINT_FILE_TOO_LARGE,
     HINT_LIST_TREE_COMPLETE,
+    HINT_LIST_TREE_INVALID_OFFSET,
     HINT_LIST_TREE_PATH_NOT_FOUND,
-    HINT_LIST_TREE_TRUNCATED,
     HINT_NOT_A_DIRECTORY,
     HINT_NOT_A_FILE,
     HINT_NO_ROOTS,
@@ -48,6 +48,7 @@ from .strings import (
     HINT_SEARCH_INVALID_REGEX,
     HINT_SEARCH_NO_MATCHES,
     HINT_SEARCH_TRUNCATED,
+    build_list_tree_truncated_hint,
 )
 
 
@@ -161,28 +162,43 @@ class RemoteFsService:
     # list_tree
     # ------------------------------------------------------------------
 
-    def list_tree(self, path: str, depth: int) -> dict[str, Any]:
+    def list_tree(self, path: str, depth: int, offset: int) -> dict[str, Any]:
         depth = max(1, depth)
+        if offset < 0:
+            return {
+                "success": False,
+                "error_type": "invalid_argument",
+                "hint": HINT_LIST_TREE_INVALID_OFFSET,
+            }
+
         # Verify path is within allowed roots and is an existing directory.
         dir_path, error = self._resolve_directory(path)
         if error is not None:
             return error
 
         # Each item describes one file or directory found during the walk,
-        # e.g. {"path": "/data/a.txt", "name": "a.txt", "type": "file", "size": 123, ...}
+        # e.g. {"path": "/data/a.txt", "type": "file"}
         fs_nodes: list[dict[str, Any]] = []
-        truncated = False
         self._walk_tree(dir_path, depth, 1, fs_nodes)
-        if len(fs_nodes) > MAX_TREE_ENTRIES:
-            fs_nodes = fs_nodes[:MAX_TREE_ENTRIES]
-            truncated = True
+        total_count = len(fs_nodes)
+        page_entries = fs_nodes[offset:offset + MAX_TREE_ENTRIES]
+        returned_count = len(page_entries)
+        next_offset = offset + returned_count
+        truncated = next_offset < total_count
 
         return {
             "success": True,
             "path": str(dir_path),
-            "entries": fs_nodes,
+            "entries": page_entries,
+            "offset": offset,
+            "returned_count": returned_count,
+            "next_offset": next_offset,
             "truncated": truncated,
-            "hint": HINT_LIST_TREE_TRUNCATED if truncated else HINT_LIST_TREE_COMPLETE,
+            "hint": (
+                build_list_tree_truncated_hint(offset, next_offset)
+                if truncated
+                else HINT_LIST_TREE_COMPLETE
+            ),
         }
 
     def _walk_tree(
@@ -194,9 +210,6 @@ class RemoteFsService:
     ) -> None:
         if current_depth > max_depth:
             return
-        # Early exit when we have collected enough entries.
-        if len(entries) > MAX_TREE_ENTRIES:
-            return
 
         try:
             children = sorted(current.iterdir(), key=lambda p: p.name)
@@ -204,8 +217,6 @@ class RemoteFsService:
             return
 
         for child in children:
-            if len(entries) > MAX_TREE_ENTRIES:
-                return
             entry: dict[str, Any] = {
                 "path": str(child),
                 "type": "directory" if child.is_dir() else "file",
@@ -284,18 +295,14 @@ class RemoteFsService:
         if not search_hits:
             return {
                 "success": True,
-                "query": query or None,
                 "matches": [],
-                "match_count": 0,
                 "truncated": False,
                 "hint": HINT_SEARCH_NO_MATCHES,
             }
 
         return {
             "success": True,
-            "query": query or None,
             "matches": search_hits,
-            "match_count": len(search_hits),
             "truncated": truncated,
             "hint": HINT_SEARCH_TRUNCATED if truncated else HINT_SEARCH_COMPLETE,
         }
@@ -441,8 +448,6 @@ class RemoteFsService:
             "truncated": truncated,
             "hint": HINT_READ_FILE_TRUNCATED if truncated else HINT_READ_FILE_COMPLETE,
         }
-        if tail > 0:
-            result["tail"] = tail
         return result
 
     # ------------------------------------------------------------------
@@ -525,10 +530,7 @@ class RemoteFsService:
             return {
                 "success": True,
                 "path": str(file_path),
-                "query": query,
                 "matches": [],
-                "match_count": 0,
-                "order": "newest_first",
                 "truncated": False,
                 "hint": HINT_REVERSE_SEARCH_NO_MATCHES,
             }
@@ -536,10 +538,7 @@ class RemoteFsService:
         return {
             "success": True,
             "path": str(file_path),
-            "query": query,
             "matches": search_hits,
-            "match_count": len(search_hits),
-            "order": "newest_first",
             "truncated": truncated,
             "hint": (
                 HINT_REVERSE_SEARCH_TRUNCATED

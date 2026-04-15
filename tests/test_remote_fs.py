@@ -10,7 +10,7 @@ from work_mcp.tools.remote_fs.path_guard import (
     PathNotAllowedError,
     resolve_allowed_path,
 )
-from work_mcp.tools.remote_fs.constants import MAX_FILE_SIZE_BYTES
+from work_mcp.tools.remote_fs.constants import MAX_FILE_SIZE_BYTES, MAX_TREE_ENTRIES
 from work_mcp.tools.remote_fs.service import RemoteFsService
 
 
@@ -135,18 +135,21 @@ class TestListTree:
     def test_list_root_depth_1(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a), depth=1)
+        result = svc.list_tree(str(root_a), depth=1, offset=0)
         assert result["success"] is True
         names = {Path(e["path"]).name for e in result["entries"]}
         assert "app.py" in names
         assert "config" in names
         assert "utils" in names
         assert result["truncated"] is False
+        assert result["offset"] == 0
+        assert result["returned_count"] == 3
+        assert result["next_offset"] == 3
 
     def test_list_deeper_depth(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a), depth=2)
+        result = svc.list_tree(str(root_a), depth=2, offset=0)
         assert result["success"] is True
         names = {Path(e["path"]).name for e in result["entries"]}
         # Should include nested files
@@ -156,23 +159,59 @@ class TestListTree:
     def test_path_not_allowed(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree("/etc", depth=1)
+        result = svc.list_tree("/etc", depth=1, offset=0)
         assert result["success"] is False
         assert result["error_type"] == "path_not_allowed"
 
     def test_path_not_found(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a / "nonexistent"), depth=1)
+        result = svc.list_tree(str(root_a / "nonexistent"), depth=1, offset=0)
         assert result["success"] is False
         assert result["error_type"] == "path_not_found"
 
     def test_not_a_directory(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
         svc = _make_service((root_a, root_b))
-        result = svc.list_tree(str(root_a / "app.py"), depth=1)
+        result = svc.list_tree(str(root_a / "app.py"), depth=1, offset=0)
         assert result["success"] is False
         assert result["error_type"] == "not_a_directory"
+
+    def test_negative_offset_is_rejected(self, sample_tree: tuple[Path, Path]) -> None:
+        root_a, root_b = sample_tree
+        svc = _make_service((root_a, root_b))
+        result = svc.list_tree(str(root_a), depth=1, offset=-1)
+        assert result["success"] is False
+        assert result["error_type"] == "invalid_argument"
+
+    def test_offset_pages_through_stable_sorted_listing(self, root_dirs: tuple[Path, Path]) -> None:
+        root_a, root_b = root_dirs
+        for index in range(MAX_TREE_ENTRIES + 5):
+            (root_a / f"file_{index:03d}.txt").write_text(f"{index}\n")
+
+        svc = _make_service((root_a, root_b))
+
+        first_page = svc.list_tree(str(root_a), depth=1, offset=0)
+        second_page = svc.list_tree(str(root_a), depth=1, offset=MAX_TREE_ENTRIES)
+
+        assert first_page["success"] is True
+        assert first_page["truncated"] is True
+        assert first_page["offset"] == 0
+        assert first_page["returned_count"] == MAX_TREE_ENTRIES
+        assert first_page["next_offset"] == MAX_TREE_ENTRIES
+        assert str(MAX_TREE_ENTRIES) in first_page["hint"]
+        assert f"offset={MAX_TREE_ENTRIES}" in first_page["hint"]
+
+        first_names = [Path(entry["path"]).name for entry in first_page["entries"]]
+        assert first_names == sorted(first_names)
+
+        assert second_page["success"] is True
+        assert second_page["truncated"] is False
+        assert second_page["offset"] == MAX_TREE_ENTRIES
+        assert second_page["returned_count"] == 5
+        assert second_page["next_offset"] == MAX_TREE_ENTRIES + 5
+        second_names = [Path(entry["path"]).name for entry in second_page["entries"]]
+        assert second_names == [f"file_{index:03d}.txt" for index in range(100, 105)]
 
 
 class TestSearchFiles:
@@ -181,7 +220,7 @@ class TestSearchFiles:
         svc = _make_service((root_a, root_b))
         result = _run(svc.search_files("DATABASE_URL", "", "", False, 50))
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert len(result["matches"]) >= 1
         paths = [m["path"] for m in result["matches"]]
         assert any("app.py" in p for p in paths)
 
@@ -192,7 +231,7 @@ class TestSearchFiles:
         svc = _make_service((root_a, root_b))
         result = _run(svc.search_files("database_url", "", "", False, 50))
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert len(result["matches"]) >= 1
 
     def test_glob_only_search(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
@@ -260,7 +299,7 @@ class TestReadFile:
         svc = _make_service((root_a, root_b))
         result = _run(svc.read_file(str(root_b / "server.log"), 1, 200, 5))
         assert result["success"] is True
-        assert result["tail"] == 5
+        assert result["start_line"] == result["total_lines"] - 4
         assert result["end_line"] == result["total_lines"]
 
     def test_path_not_allowed(self, sample_tree: tuple[Path, Path]) -> None:
@@ -313,8 +352,7 @@ class TestSearchFileReverse:
             svc.search_file_reverse(str(root_b / "server.log"), "ERROR", 5, 1, 1, False)
         )
         assert result["success"] is True
-        assert result["order"] == "newest_first"
-        assert result["match_count"] >= 1
+        assert len(result["matches"]) >= 1
         lines = [m["line"] for m in result["matches"]]
         assert lines == sorted(lines, reverse=True)
 
@@ -327,7 +365,7 @@ class TestSearchFileReverse:
             )
         )
         assert result["success"] is True
-        assert result["match_count"] == 0
+        assert result["matches"] == []
 
     def test_empty_query_rejected(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
@@ -356,7 +394,7 @@ class TestSearchFileReverse:
             )
         )
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert len(result["matches"]) >= 1
 
     def test_plain_search_is_case_insensitive(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree
@@ -365,7 +403,7 @@ class TestSearchFileReverse:
             svc.search_file_reverse(str(root_b / "server.log"), "error", 5, 0, 0, False)
         )
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert len(result["matches"]) >= 1
 
     def test_regex_search_is_case_insensitive(
         self, sample_tree: tuple[Path, Path]
@@ -378,7 +416,7 @@ class TestSearchFileReverse:
             )
         )
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert len(result["matches"]) >= 1
 
     def test_invalid_regex(self, sample_tree: tuple[Path, Path]) -> None:
         root_a, root_b = sample_tree

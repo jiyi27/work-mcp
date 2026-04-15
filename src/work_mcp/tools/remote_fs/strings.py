@@ -92,15 +92,23 @@ HINT_LIST_TREE_COMPLETE = (
     f"use {TOOL_READ_FILE}. Otherwise use {TOOL_SEARCH_FILES} to narrow the search."
 )
 
-HINT_LIST_TREE_TRUNCATED = (
-    f"The directory listing reached the server limit ({MAX_TREE_ENTRIES} entries). "
-    f"Do not keep browsing blindly. Use {TOOL_SEARCH_FILES} with a narrower root "
-    "or path_glob."
-)
+def build_list_tree_truncated_hint(offset: int, next_offset: int) -> str:
+    return (
+        f"The directory listing reached the server limit ({MAX_TREE_ENTRIES} entries). "
+        "Results are sorted by relative path in ascending order. "
+        f"If you need more entries, call {TOOL_LIST_TREE} again with offset={next_offset}. "
+        f"This page started at offset={offset}. If you already know a narrower target, "
+        f"use {TOOL_SEARCH_FILES} with a narrower root or path_glob."
+    )
 
 HINT_LIST_TREE_PATH_NOT_FOUND = (
     "The directory path does not exist. Verify the path against the allowed "
     f"roots or use {TOOL_LIST_TREE} on a higher-level directory first."
+)
+
+HINT_LIST_TREE_INVALID_OFFSET = (
+    "The requested offset is invalid. Use offset 0 or a positive integer to continue "
+    f"paging through {TOOL_LIST_TREE} results."
 )
 
 # ---------------------------------------------------------------------------
