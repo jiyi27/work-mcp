@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 # Maximum entries returned by list_tree.
-MAX_TREE_ENTRIES = 500
+MAX_TREE_ENTRIES = 100
 
 # Maximum matches returned by search_files.
-MAX_SEARCH_MATCHES = 50
+MAX_SEARCH_MATCHES = 20
 
 # Maximum lines returned by read_file in a single call.
 MAX_READ_LINES = 500

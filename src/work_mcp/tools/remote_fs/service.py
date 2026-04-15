@@ -13,7 +13,6 @@ import aiofiles
 from ...config import RemoteFsSettings
 from .constants import (
     BINARY_CHECK_BYTES,
-    DEFAULT_CONTEXT_LINES,
     DEFAULT_READ_LINES,
     MAX_CONTEXT_LINES,
     MAX_FILE_SIZE_BYTES,
@@ -171,21 +170,24 @@ class RemoteFsService:
 
     def list_tree(self, path: str, depth: int) -> dict[str, Any]:
         depth = max(1, depth)
-        resolved, error = self._resolve_directory(path)
+        # Verify path is within allowed roots and is an existing directory.
+        dir_path, error = self._resolve_directory(path)
         if error is not None:
             return error
 
-        entries: list[dict[str, Any]] = []
+        # Each item describes one file or directory found during the walk,
+        # e.g. {"path": "/data/a.txt", "name": "a.txt", "type": "file", "size": 123, ...}
+        fs_nodes: list[dict[str, Any]] = []
         truncated = False
-        self._walk_tree(resolved, depth, 1, entries)
-        if len(entries) > MAX_TREE_ENTRIES:
-            entries = entries[:MAX_TREE_ENTRIES]
+        self._walk_tree(dir_path, depth, 1, fs_nodes)
+        if len(fs_nodes) > MAX_TREE_ENTRIES:
+            fs_nodes = fs_nodes[:MAX_TREE_ENTRIES]
             truncated = True
 
         return {
             "success": True,
-            "path": str(resolved),
-            "entries": entries,
+            "path": str(dir_path),
+            "entries": fs_nodes,
             "truncated": truncated,
             "hint": HINT_LIST_TREE_TRUNCATED if truncated else HINT_LIST_TREE_COMPLETE,
         }
@@ -263,10 +265,11 @@ class RemoteFsService:
                     matched = True
                     break
             if not matched:
-                resolved_root, error = self._resolve_directory(root)
+                # root may be a subdirectory of a configured root — verify it is allowed and is a directory.
+                dir_path, error = self._resolve_directory(root)
                 if error is not None:
                     return error
-                search_roots.append(resolved_root)
+                search_roots.append(dir_path)
         else:
             search_roots = [r.path for r in self._settings.roots]
 
@@ -282,17 +285,18 @@ class RemoteFsService:
                     "hint": HINT_SEARCH_INVALID_REGEX,
                 }
 
-        matches: list[dict[str, Any]] = []
+        # Each item is a matched file location, e.g. {"path": "/data/a.txt", "line": 42, "preview": "..."}
+        search_hits: list[dict[str, Any]] = []
         truncated = False
 
         for search_root in search_roots:
             if truncated:
                 break
             truncated = await self._search_in_root(
-                search_root, normalized_query, path_glob, pattern, max_matches, matches,
+                search_root, normalized_query, path_glob, pattern, max_matches, search_hits,
             )
 
-        if not matches:
+        if not search_hits:
             return {
                 "success": True,
                 "query": query or None,
@@ -305,8 +309,8 @@ class RemoteFsService:
         return {
             "success": True,
             "query": query or None,
-            "matches": matches,
-            "match_count": len(matches),
+            "matches": search_hits,
+            "match_count": len(search_hits),
             "truncated": truncated,
             "hint": HINT_SEARCH_TRUNCATED if truncated else HINT_SEARCH_COMPLETE,
         }
@@ -318,25 +322,25 @@ class RemoteFsService:
         path_glob: str,
         pattern: re.Pattern[str] | None,
         max_matches: int,
-        matches: list[dict[str, Any]],
+        search_hits: list[dict[str, Any]],
     ) -> bool:
         """Walk files under root and collect matches. Returns True if truncated."""
         for dirpath, _dirnames, filenames in os.walk(root):
             for filename in filenames:
-                if len(matches) >= max_matches:
+                if len(search_hits) >= max_matches:
                     return True
 
                 file_path = Path(dirpath) / filename
 
                 # Apply glob filter on the path relative to root.
                 if path_glob:
-                    relative = file_path.relative_to(root)
-                    if not _matches_path_glob(relative, path_glob):
+                    relative_path = file_path.relative_to(root)
+                    if not _matches_path_glob(relative_path, path_glob):
                         continue
 
                 # Name-only search: no query, just glob matching.
                 if not normalized_query:
-                    matches.append({
+                    search_hits.append({
                         "path": str(file_path),
                         "line": None,
                         "preview": None,
@@ -355,7 +359,7 @@ class RemoteFsService:
                         line_no = 0
                         async for line in f:
                             line_no += 1
-                            if len(matches) >= max_matches:
+                            if len(search_hits) >= max_matches:
                                 return True
                             hit = False
                             if pattern is not None:
@@ -363,7 +367,7 @@ class RemoteFsService:
                             else:
                                 hit = normalized_query in line.lower()
                             if hit:
-                                matches.append({
+                                search_hits.append({
                                     "path": str(file_path),
                                     "line": line_no,
                                     "preview": line.rstrip("\n\r"),
@@ -371,7 +375,7 @@ class RemoteFsService:
                 except OSError:
                     continue
 
-        return len(matches) >= max_matches
+        return len(search_hits) >= max_matches
 
     # ------------------------------------------------------------------
     # read_file
@@ -384,7 +388,8 @@ class RemoteFsService:
         max_lines: int,
         tail: int,
     ) -> dict[str, Any]:
-        resolved, error = self._resolve_text_file(path)
+        # Verify path is within allowed roots, is a file, and is readable text.
+        file_path, error = self._resolve_text_file(path)
         if error is not None:
             return error
 
@@ -398,7 +403,7 @@ class RemoteFsService:
             }
 
         async with aiofiles.open(
-            resolved, encoding="utf-8", errors="replace",
+            file_path, encoding="utf-8", errors="replace",
         ) as f:
             all_lines = (await f.read()).splitlines()
 
@@ -407,7 +412,7 @@ class RemoteFsService:
         if total_lines == 0:
             return {
                 "success": True,
-                "path": str(resolved),
+                "path": str(file_path),
                 "start_line": 0,
                 "end_line": 0,
                 "total_lines": 0,
@@ -443,7 +448,7 @@ class RemoteFsService:
 
         result: dict[str, Any] = {
             "success": True,
-            "path": str(resolved),
+            "path": str(file_path),
             "start_line": actual_start + 1,
             "end_line": actual_end,
             "total_lines": total_lines,
@@ -480,7 +485,8 @@ class RemoteFsService:
         max_matches = min(max(1, max_matches), MAX_REVERSE_MATCHES)
         before = min(max(0, before), MAX_CONTEXT_LINES)
         after = min(max(0, after), MAX_CONTEXT_LINES)
-        resolved, error = self._resolve_text_file(path)
+        # Verify path is within allowed roots, is a file, and is readable text.
+        file_path, error = self._resolve_text_file(path)
         if error is not None:
             return error
 
@@ -497,15 +503,17 @@ class RemoteFsService:
                 }
 
         async with aiofiles.open(
-            resolved, encoding="utf-8", errors="replace",
+            file_path, encoding="utf-8", errors="replace",
         ) as f:
             all_lines = (await f.read()).splitlines()
 
-        matches: list[dict[str, Any]] = []
+        # Each item is a matched line with context,
+        # e.g. {"line": 42, "match": "foo bar", "before": [...], "after": [...]}
+        search_hits: list[dict[str, Any]] = []
         truncated = False
 
         for line_idx in range(len(all_lines) - 1, -1, -1):
-            if len(matches) >= max_matches:
+            if len(search_hits) >= max_matches:
                 truncated = True
                 break
 
@@ -521,17 +529,17 @@ class RemoteFsService:
             before_start = max(0, line_idx - before)
             after_end = min(len(all_lines), line_idx + 1 + after)
 
-            matches.append({
+            search_hits.append({
                 "line": line_idx + 1,
                 "match": line,
                 "before": all_lines[before_start:line_idx],
                 "after": all_lines[line_idx + 1:after_end],
             })
 
-        if not matches:
+        if not search_hits:
             return {
                 "success": True,
-                "path": str(resolved),
+                "path": str(file_path),
                 "query": query,
                 "matches": [],
                 "match_count": 0,
@@ -542,10 +550,10 @@ class RemoteFsService:
 
         return {
             "success": True,
-            "path": str(resolved),
+            "path": str(file_path),
             "query": query,
-            "matches": matches,
-            "match_count": len(matches),
+            "matches": search_hits,
+            "match_count": len(search_hits),
             "order": "newest_first",
             "truncated": truncated,
             "hint": (

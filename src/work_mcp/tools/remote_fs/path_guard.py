@@ -13,6 +13,8 @@ def resolve_allowed_path(raw_path: str, allowed_roots: tuple[Path, ...]) -> Path
     Accepts absolute paths (e.g. those returned by get_allowed_roots).
     Normalizes symlinks and '..' via resolve().
     """
+    # resolve() expands '..' and symlinks to prevent path traversal attacks
+    # e.g. "/data/../etc/passwd" → "/etc/passwd" before the root check
     resolved = Path(raw_path).resolve()
     for root in allowed_roots:
         try:
