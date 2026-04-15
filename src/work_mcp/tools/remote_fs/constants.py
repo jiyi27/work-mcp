@@ -3,6 +3,54 @@ from __future__ import annotations
 # Maximum entries returned by list_tree.
 MAX_TREE_ENTRIES = 100
 
+# Maximum directory depth expanded by list_tree.
+MAX_TREE_DEPTH = 3
+
+# Directory names skipped by list_tree to avoid exhausting pagination on
+# repository metadata, caches, and dependency folders.
+LIST_TREE_IGNORED_DIRECTORY_NAMES = frozenset({
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "venv",
+    "node_modules",
+    "vendor",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".tox",
+    ".nox",
+    ".ruff_cache",
+    ".hypothesis",
+    ".cache",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".parcel-cache",
+    ".gradle",
+    ".terraform",
+    ".serverless",
+    ".idea",
+    ".vscode",
+    "build",
+    "coverage",
+    "dist",
+    "out",
+    "target",
+    "obj",
+    "bin",
+    "tmp",
+    "temp",
+    "TestResults",
+})
+
+# Directory path suffixes skipped by list_tree.
+LIST_TREE_IGNORED_DIRECTORY_SUFFIXES = (
+    ("bootstrap", "cache"),
+)
+
 # Maximum matches returned by search_files.
 MAX_SEARCH_MATCHES = 20
 

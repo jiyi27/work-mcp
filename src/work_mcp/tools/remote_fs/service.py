@@ -13,18 +13,20 @@ from ...config import RemoteFsSettings
 from .constants import (
     BINARY_CHECK_BYTES,
     DEFAULT_READ_LINES,
+    LIST_TREE_IGNORED_DIRECTORY_NAMES,
+    LIST_TREE_IGNORED_DIRECTORY_SUFFIXES,
     MAX_CONTEXT_LINES,
     MAX_FILE_SIZE_BYTES,
     MAX_READ_LINES,
     MAX_REVERSE_MATCHES,
     MAX_SEARCH_MATCHES,
+    MAX_TREE_DEPTH,
     MAX_TREE_ENTRIES,
 )
 from .path_guard import PathNotAllowedError, resolve_allowed_path
 from .strings import (
     HINT_BINARY_FILE_NOT_SUPPORTED,
     HINT_FILE_TOO_LARGE,
-    HINT_LIST_TREE_COMPLETE,
     HINT_LIST_TREE_INVALID_OFFSET,
     HINT_LIST_TREE_PATH_NOT_FOUND,
     HINT_NOT_A_DIRECTORY,
@@ -48,7 +50,7 @@ from .strings import (
     HINT_SEARCH_INVALID_REGEX,
     HINT_SEARCH_NO_MATCHES,
     HINT_SEARCH_TRUNCATED,
-    build_list_tree_truncated_hint,
+    build_list_tree_hint,
 )
 
 
@@ -69,6 +71,20 @@ def _matches_path_glob(relative_path: Path, path_glob: str) -> bool:
     if path_glob.startswith("**/"):
         return fnmatch.fnmatch(relative_str, path_glob.removeprefix("**/"))
     return False
+
+
+def _should_skip_tree_directory(path: Path) -> bool:
+    if path.name in LIST_TREE_IGNORED_DIRECTORY_NAMES:
+        return True
+    parts = path.parts
+    return any(
+        len(parts) >= len(suffix) and parts[-len(suffix):] == suffix
+        for suffix in LIST_TREE_IGNORED_DIRECTORY_SUFFIXES
+    )
+
+
+def _normalized_tree_depth(depth: int) -> int:
+    return min(max(1, depth), MAX_TREE_DEPTH)
 
 
 class RemoteFsService:
@@ -163,7 +179,8 @@ class RemoteFsService:
     # ------------------------------------------------------------------
 
     def list_tree(self, path: str, depth: int, offset: int) -> dict[str, Any]:
-        depth = max(1, depth)
+        requested_depth = depth
+        depth = _normalized_tree_depth(depth)
         if offset < 0:
             return {
                 "success": False,
@@ -180,24 +197,36 @@ class RemoteFsService:
         # e.g. {"path": "/data/a.txt", "type": "file"}
         fs_nodes: list[dict[str, Any]] = []
         self._walk_tree(dir_path, depth, 1, fs_nodes)
+        fs_nodes.sort(
+            key=lambda entry: (
+                -entry["modified_at"],
+                Path(entry["path"]).relative_to(dir_path).as_posix(),
+            )
+        )
         total_count = len(fs_nodes)
         page_entries = fs_nodes[offset:offset + MAX_TREE_ENTRIES]
         returned_count = len(page_entries)
+        result_entries = [
+            {"path": entry["path"], "type": entry["type"]}
+            for entry in page_entries
+        ]
         next_offset = offset + returned_count
         truncated = next_offset < total_count
 
         return {
             "success": True,
             "path": str(dir_path),
-            "entries": page_entries,
+            "entries": result_entries,
             "offset": offset,
             "returned_count": returned_count,
             "next_offset": next_offset,
             "truncated": truncated,
-            "hint": (
-                build_list_tree_truncated_hint(offset, next_offset)
-                if truncated
-                else HINT_LIST_TREE_COMPLETE
+            "hint": build_list_tree_hint(
+                truncated=truncated,
+                offset=offset,
+                next_offset=next_offset,
+                requested_depth=requested_depth,
+                effective_depth=depth,
             ),
         }
 
@@ -217,9 +246,12 @@ class RemoteFsService:
             return
 
         for child in children:
+            if child.is_dir() and _should_skip_tree_directory(child):
+                continue
             entry: dict[str, Any] = {
                 "path": str(child),
                 "type": "directory" if child.is_dir() else "file",
+                "modified_at": child.stat().st_mtime,
             }
             entries.append(entry)
             if child.is_dir() and current_depth < max_depth:

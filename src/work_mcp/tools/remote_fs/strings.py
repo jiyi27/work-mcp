@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from ...hints import STOP_AND_NOTIFY_USER_INSTRUCTION
-from .constants import MAX_FILE_SIZE_MB, MAX_SEARCH_MATCHES, MAX_TREE_ENTRIES
+from .constants import (
+    MAX_FILE_SIZE_MB,
+    MAX_SEARCH_MATCHES,
+    MAX_TREE_DEPTH,
+    MAX_TREE_ENTRIES,
+)
 
 # ---------------------------------------------------------------------------
 # Tool names — single source of truth for registrations and cross-tool hints.
@@ -92,14 +97,42 @@ HINT_LIST_TREE_COMPLETE = (
     f"use {TOOL_READ_FILE}. Otherwise use {TOOL_SEARCH_FILES} to narrow the search."
 )
 
+def build_list_tree_depth_limited_hint(requested_depth: int) -> str:
+    return (
+        f"The requested depth ({requested_depth}) exceeds the server limit. "
+        f"The listing was generated with depth={MAX_TREE_DEPTH}. "
+        f"If you need deeper content, call {TOOL_LIST_TREE} again on a more specific "
+        f"subdirectory or use {TOOL_SEARCH_FILES} to narrow the target."
+    )
+
+
 def build_list_tree_truncated_hint(offset: int, next_offset: int) -> str:
     return (
         f"The directory listing reached the server limit ({MAX_TREE_ENTRIES} entries). "
-        "Results are sorted by relative path in ascending order. "
+        "Results are sorted by most recent modification time first. "
         f"If you need more entries, call {TOOL_LIST_TREE} again with offset={next_offset}. "
         f"This page started at offset={offset}. If you already know a narrower target, "
         f"use {TOOL_SEARCH_FILES} with a narrower root or path_glob."
     )
+
+
+def build_list_tree_hint(
+    *,
+    truncated: bool,
+    offset: int,
+    next_offset: int,
+    requested_depth: int,
+    effective_depth: int,
+) -> str:
+    hint_parts: list[str] = []
+    if requested_depth > effective_depth:
+        hint_parts.append(build_list_tree_depth_limited_hint(requested_depth))
+    hint_parts.append(
+        build_list_tree_truncated_hint(offset, next_offset)
+        if truncated
+        else HINT_LIST_TREE_COMPLETE
+    )
+    return " ".join(hint_parts)
 
 HINT_LIST_TREE_PATH_NOT_FOUND = (
     "The directory path does not exist. Verify the path against the allowed "
