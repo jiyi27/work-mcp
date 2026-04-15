@@ -13,11 +13,14 @@ from ...logger import error
 from .client import JiraApiError, JiraClient
 from .models import JiraIssue
 from .strings import (
+    JIRA_GET_ISSUE_DETAILS_SUCCESS_HINT,
     JIRA_IMAGE_ATTACHMENT_CONTEXT_MISSING_HINT,
-    JIRA_INVESTIGATE_ISSUE_HINT,
+    JIRA_LIST_OPEN_ASSIGNED_ISSUES_EMPTY_HINT,
+    JIRA_LIST_OPEN_ASSIGNED_ISSUES_SUCCESS_HINT,
     JIRA_TRANSITION_FAILURE_HINT,
     jira_assignee_not_allowed_hint,
     jira_attachment_not_found_hint,
+    jira_issue_details_project_not_allowed_hint,
     jira_issue_not_found_hint,
     jira_project_not_allowed_hint,
 )
@@ -33,6 +36,7 @@ JIRA_ISSUE_FIELDS = (
     "attachment",
     "updated",
 )
+JIRA_OPEN_ASSIGNED_ISSUES_LIMIT = 100
 
 
 def _api_error_message(operation: str, exc: JiraApiError) -> str:
@@ -50,29 +54,57 @@ class JiraService:
         self._settings = settings
         self._client = JiraClient(settings)
 
-    def get_latest_assigned_issue(self) -> dict[str, Any]:
+    def list_open_assigned_issues(self) -> dict[str, Any]:
         try:
-            issue = self._get_latest_assigned_issue()
+            issues = self._get_open_assigned_issues()
         except JiraApiError as exc:
-            error("jira.get_latest_assigned_issue.api_error", {}, exc=exc)
-            return self._internal_error(_api_error_message("fetching the latest assigned issue", exc))
+            error("jira.list_open_assigned_issues.api_error", {}, exc=exc)
+            return self._internal_error(_api_error_message("fetching the open assigned issues", exc))
+
+        if not issues:
+            return {"found": False, "issues": [], "hint": JIRA_LIST_OPEN_ASSIGNED_ISSUES_EMPTY_HINT}
+
+        return {
+            "found": True,
+            "issues": [self._serialize_issue_list_item(issue) for issue in issues],
+            "hint": JIRA_LIST_OPEN_ASSIGNED_ISSUES_SUCCESS_HINT,
+        }
+
+    def get_issue_details(self, issue_key: str) -> dict[str, Any]:
+        issue_key = issue_key.strip()
+        if not issue_key:
+            return {
+                "success": False,
+                "error_type": "invalid_input",
+                "hint": required_param_hint("issue_key"),
+            }
+
+        try:
+            issue = self._get_issue_by_key(issue_key)
+        except JiraApiError as exc:
+            error("jira.get_issue_details.lookup_failed", {"issue_key": issue_key}, exc=exc)
+            return self._internal_error(_api_error_message(f"looking up {issue_key}", exc))
 
         if issue is None:
-            return {"found": False}
+            return {
+                "success": False,
+                "error_type": "issue_not_found",
+                "hint": jira_issue_not_found_hint(issue_key),
+            }
+
+        if not self._is_allowed_project(issue.key):
+            return {
+                "success": False,
+                "error_type": "project_not_allowed",
+                "hint": jira_issue_details_project_not_allowed_hint(issue.key),
+            }
 
         attachments = self._serialize_attachments(issue)
         result = {
-            "found": True,
-            "issue": {
-                "key": issue.key,
-                "summary": issue.summary,
-                "description": issue.description,
-                "status": issue.status,
-                "priority": issue.priority,
-                "issue_type": issue.issue_type,
-            },
+            "success": True,
+            "issue": self._serialize_issue_details(issue),
             "attachments": attachments,
-            "hint": JIRA_INVESTIGATE_ISSUE_HINT,
+            "hint": JIRA_GET_ISSUE_DETAILS_SUCCESS_HINT,
         }
         if attachments:
             result["image_handling_hint"] = JIRA_IMAGE_ATTACHMENT_CONTEXT_MISSING_HINT
@@ -287,15 +319,13 @@ class JiraService:
 
         return {"success": True, "issue_key": issue_key, "target_status": target_status}
 
-    def _get_latest_assigned_issue(self) -> JiraIssue | None:
+    def _get_open_assigned_issues(self) -> list[JiraIssue]:
         issues = self._client.search_issues(
-            jql=self._build_latest_assigned_issue_jql(),
+            jql=self._build_open_assigned_issues_jql(),
             fields=JIRA_ISSUE_FIELDS,
-            max_results=1,
+            max_results=JIRA_OPEN_ASSIGNED_ISSUES_LIMIT,
         )
-        if not issues:
-            return None
-        return JiraIssue.from_api(issues[0])
+        return [JiraIssue.from_api(item) for item in issues]
 
     def _get_issue_by_key(self, issue_key: str) -> JiraIssue | None:
         issue = self._client.get_issue(issue_key, fields=JIRA_ISSUE_FIELDS)
@@ -303,7 +333,7 @@ class JiraService:
             return None
         return JiraIssue.from_api(issue)
 
-    def _build_latest_assigned_issue_jql(self) -> str:
+    def _build_open_assigned_issues_jql(self) -> str:
         if not self._settings.jira_project_key:
             raise RuntimeError(
                 "Missing JIRA_PROJECT_KEY in environment or .env. Configure one Jira project key."
@@ -318,6 +348,24 @@ class JiraService:
             f'project = "{self._settings.jira_project_key}" AND assignee = currentUser() '
             f"AND status in ({statuses_clause}) ORDER BY updated DESC"
         )
+
+    @staticmethod
+    def _serialize_issue_list_item(issue: JiraIssue) -> dict[str, str]:
+        return {
+            "key": issue.key,
+            "summary": issue.summary,
+        }
+
+    @staticmethod
+    def _serialize_issue_details(issue: JiraIssue) -> dict[str, str]:
+        return {
+            "key": issue.key,
+            "summary": issue.summary,
+            "description": issue.description,
+            "status": issue.status,
+            "priority": issue.priority,
+            "issue_type": issue.issue_type,
+        }
 
     def _is_allowed_project(self, issue_key: str) -> bool:
         configured_project = self._settings.jira_project_key

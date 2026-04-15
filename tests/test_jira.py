@@ -9,6 +9,10 @@ from work_mcp import logger
 from work_mcp.config import ServerSettings, Settings, default_startup_settings
 from work_mcp.server import create_mcp
 from work_mcp.tools.jira.client import JiraApiError
+from work_mcp.tools.jira.strings import (
+    JIRA_GET_ISSUE_DETAILS_TOOL_NAME,
+    JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME,
+)
 
 _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
@@ -44,7 +48,7 @@ def test_jira_client_uses_bearer_auth_by_default() -> None:
     assert client._auth_header() == "Bearer jira-token"
 
 
-def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata() -> None:
+def test_jira_list_open_assigned_issues_returns_minimal_issue_list() -> None:
     search_results = [
         {
             "key": "IOS-123",
@@ -72,12 +76,53 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata()
         "work_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=search_results,
     ):
-        _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
+        _, structured = asyncio.run(mcp.call_tool(JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME, {}))
 
     assert structured == {
         "found": True,
+        "issues": [{"key": "IOS-123", "summary": "Crash on launch"}],
+        "hint": (
+            "These are the user's currently open Jira issues. Stop here. In your reply, "
+            "list them in the format `KEY: title`, then ask the user which issue key they want help with. "
+            "Do not investigate any issue until the user selects one."
+        ),
+    }
+
+
+def test_jira_get_issue_details_returns_issue_with_attachment_metadata() -> None:
+    issue_payload = {
+        "key": "IOS-124",
+        "fields": {
+            "summary": "Crash on launch",
+            "description": "Steps to reproduce",
+            "status": {"name": "Todo"},
+            "priority": {"name": "High"},
+            "issuetype": {"name": "故障"},
+            "updated": "2026-04-02T10:00:00.000+0800",
+            "attachment": [
+                {
+                    "id": "10",
+                    "filename": "crash.png",
+                    "mimeType": "image/png",
+                    "size": 123,
+                    "content": "https://jira.example.invalid/attachment/1",
+                }
+            ],
+        },
+    }
+    mcp = create_mcp(_make_settings())
+    with patch(
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
+        return_value=issue_payload,
+    ):
+        _, structured = asyncio.run(
+            mcp.call_tool(JIRA_GET_ISSUE_DETAILS_TOOL_NAME, {"issue_key": "IOS-124"})
+        )
+
+    assert structured == {
+        "success": True,
         "issue": {
-            "key": "IOS-123",
+            "key": "IOS-124",
             "summary": "Crash on launch",
             "description": "Steps to reproduce",
             "status": "Todo",
@@ -93,9 +138,9 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata()
             }
         ],
         "hint": (
-            "If you cannot determine the root cause or the issue appears to already be resolved, "
-            "stop processing, summarize your findings, tell the user in your reply, "
-            "and ask the user how you should proceed."
+            "This is the Jira issue the user selected. You may now investigate it. "
+            "If the root cause is unclear, the issue appears already resolved, or important context is missing, "
+            "stop, summarize your findings, tell the user in your reply, and ask how you should proceed."
         ),
         "image_handling_hint": (
             "This issue includes image attachments, but this tool does not return image contents yet. "
@@ -105,30 +150,30 @@ def test_jira_get_latest_assigned_issue_returns_issue_with_attachment_metadata()
     }
 
 
-def test_jira_get_latest_assigned_issue_omits_image_hint_without_image_attachments() -> None:
-    search_results = [
-        {
-            "key": "IOS-124",
-            "fields": {
-                "summary": "Crash on launch",
-                "description": "Steps to reproduce",
-                "status": {"name": "Todo"},
-                "priority": {"name": "High"},
-                "issuetype": {"name": "故障"},
-                "updated": "2026-04-02T10:00:00.000+0800",
-                "attachment": [],
-            },
-        }
-    ]
+def test_jira_get_issue_details_omits_image_hint_without_image_attachments() -> None:
+    issue_payload = {
+        "key": "IOS-124",
+        "fields": {
+            "summary": "Crash on launch",
+            "description": "Steps to reproduce",
+            "status": {"name": "Todo"},
+            "priority": {"name": "High"},
+            "issuetype": {"name": "故障"},
+            "updated": "2026-04-02T10:00:00.000+0800",
+            "attachment": [],
+        },
+    }
     mcp = create_mcp(_make_settings())
     with patch(
-        "work_mcp.tools.jira.client.JiraClient.search_issues",
-        return_value=search_results,
+        "work_mcp.tools.jira.client.JiraClient.get_issue",
+        return_value=issue_payload,
     ):
-        _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
+        _, structured = asyncio.run(
+            mcp.call_tool(JIRA_GET_ISSUE_DETAILS_TOOL_NAME, {"issue_key": "IOS-124"})
+        )
 
     assert structured == {
-        "found": True,
+        "success": True,
         "issue": {
             "key": "IOS-124",
             "summary": "Crash on launch",
@@ -139,23 +184,32 @@ def test_jira_get_latest_assigned_issue_omits_image_hint_without_image_attachmen
         },
         "attachments": [],
         "hint": (
-            "If you cannot determine the root cause or the issue appears to already be resolved, "
-            "stop processing, summarize your findings, tell the user in your reply, "
-            "and ask the user how you should proceed."
+            "This is the Jira issue the user selected. You may now investigate it. "
+            "If the root cause is unclear, the issue appears already resolved, or important context is missing, "
+            "stop, summarize your findings, tell the user in your reply, and ask how you should proceed."
         ),
     }
 
 
-def test_jira_get_latest_assigned_issue_uses_configured_status_list_in_jql() -> None:
+def test_jira_list_open_assigned_issues_uses_configured_status_list_in_jql() -> None:
     service_settings = _make_settings(jira_project_key="IOS", jira_latest_assigned_statuses=("待处理", "已接收"))
     mcp = create_mcp(service_settings)
     with patch(
         "work_mcp.tools.jira.client.JiraClient.search_issues",
         return_value=[],
     ) as search_mock:
-        _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
+        _, structured = asyncio.run(mcp.call_tool(JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME, {}))
 
-    assert structured == {"found": False}
+    assert structured == {
+        "found": False,
+        "issues": [],
+        "hint": (
+            "No open Jira issues were found for the current user in the configured project and status scope. "
+            "Stop and tell the user in your reply that no open issues are currently visible. "
+            "If this seems unexpected, suggest checking whether `jira.project_key` or "
+            "`jira.latest_assigned_statuses` in `config.yaml` is configured correctly."
+        ),
+    }
     search_mock.assert_called_once_with(
         jql='project = "IOS" AND assignee = currentUser() AND status in ("待处理", "已接收") ORDER BY updated DESC',
         fields=(
@@ -168,11 +222,11 @@ def test_jira_get_latest_assigned_issue_uses_configured_status_list_in_jql() -> 
             "attachment",
             "updated",
         ),
-        max_results=1,
+        max_results=100,
     )
 
 
-def test_jira_get_latest_assigned_issue_returns_clean_message_for_auth_failure() -> None:
+def test_jira_list_open_assigned_issues_returns_clean_message_for_auth_failure() -> None:
     mcp = create_mcp(_make_settings())
     with patch(
         "work_mcp.tools.jira.client.JiraClient.search_issues",
@@ -181,13 +235,13 @@ def test_jira_get_latest_assigned_issue_returns_clean_message_for_auth_failure()
             status_code=401,
         ),
     ):
-        _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
+        _, structured = asyncio.run(mcp.call_tool(JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME, {}))
 
     assert structured == {
         "success": False,
         "error_type": "internal_error",
         "message": (
-            "Jira authentication failed while fetching the latest assigned issue (HTTP 401). "
+            "Jira authentication failed while fetching the open assigned issues (HTTP 401). "
             "Check JIRA_BASE_URL and JIRA_API_TOKEN."
         ),
         "hint": (
@@ -197,7 +251,7 @@ def test_jira_get_latest_assigned_issue_returns_clean_message_for_auth_failure()
     }
 
 
-def test_jira_get_latest_assigned_issue_returns_generic_message_for_non_auth_http_error() -> None:
+def test_jira_list_open_assigned_issues_returns_generic_message_for_non_auth_http_error() -> None:
     mcp = create_mcp(_make_settings())
     with patch(
         "work_mcp.tools.jira.client.JiraClient.search_issues",
@@ -206,15 +260,62 @@ def test_jira_get_latest_assigned_issue_returns_generic_message_for_non_auth_htt
             status_code=500,
         ),
     ):
-        _, structured = asyncio.run(mcp.call_tool("jira_get_latest_assigned_issue", {}))
+        _, structured = asyncio.run(mcp.call_tool(JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME, {}))
 
     assert structured == {
         "success": False,
         "error_type": "internal_error",
-        "message": "Error while fetching the latest assigned issue: Jira request failed with HTTP 500: internal server error",
+        "message": "Error while fetching the open assigned issues: Jira request failed with HTTP 500: internal server error",
         "hint": (
             "An internal error occurred. Retry up to 2 times; "
             "if still failing, stop and notify the user with the message above."
+        ),
+    }
+
+
+def test_jira_get_issue_details_returns_not_found_hint() -> None:
+    mcp = create_mcp(_make_settings())
+    with patch("work_mcp.tools.jira.client.JiraClient.get_issue", return_value=None):
+        _, structured = asyncio.run(
+            mcp.call_tool(JIRA_GET_ISSUE_DETAILS_TOOL_NAME, {"issue_key": "IOS-404"})
+        )
+
+    assert structured == {
+        "success": False,
+        "error_type": "issue_not_found",
+        "hint": (
+            "Issue IOS-404 was not found. Only retry with a different key if you are certain you used the wrong one; "
+            "do not guess. Otherwise Stop, tell the user in your reply, and ask the user how you should proceed."
+        ),
+    }
+
+
+def test_jira_get_issue_details_rejects_issue_outside_configured_project() -> None:
+    issue_payload = {
+        "key": "ANDROID-123",
+        "fields": {
+            "summary": "Crash on launch",
+            "description": "Steps to reproduce",
+            "status": {"name": "Todo"},
+            "priority": {"name": "High"},
+            "issuetype": {"name": "故障"},
+            "updated": "2026-04-02T10:00:00.000+0800",
+            "attachment": [],
+        },
+    }
+    mcp = create_mcp(_make_settings(jira_project_key="IOS"))
+    with patch("work_mcp.tools.jira.client.JiraClient.get_issue", return_value=issue_payload):
+        _, structured = asyncio.run(
+            mcp.call_tool(JIRA_GET_ISSUE_DETAILS_TOOL_NAME, {"issue_key": "ANDROID-123"})
+        )
+
+    assert structured == {
+        "success": False,
+        "error_type": "project_not_allowed",
+        "hint": (
+            "ANDROID-123 is outside the configured Jira project scope. "
+            "Do not retry with a different issue key unless the user gives one explicitly. "
+            "Stop, tell the user in your reply, and ask the user how you should proceed."
         ),
     }
 

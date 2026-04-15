@@ -12,6 +12,12 @@ from urllib.parse import parse_qs, urlsplit
 
 from work_mcp.config import ServerSettings, Settings, default_startup_settings
 from work_mcp.server import _apply_cli_overrides, create_mcp, main
+from work_mcp.tools.jira.strings import (
+    JIRA_GET_ISSUE_DETAILS_TOOL_NAME,
+    JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME,
+    JIRA_RESOLVE_ISSUE_TOOL_NAME,
+    JIRA_START_ISSUE_TOOL_NAME,
+)
 
 _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 
@@ -91,7 +97,8 @@ def test_dingtalk_send_markdown_writes_success_log(tmp_path: Path) -> None:
     files = list(tmp_path.glob("*.info.log"))
     assert len(files) == 1
     record = json.loads(files[0].read_text(encoding="utf-8").splitlines()[0])
-    assert record["topic"] == "dingtalk.sent"
+    assert record["topic"] == "tool.response"
+    assert record["data"]["tool"] == "dingtalk_send_markdown"
 
 
 def test_dingtalk_send_markdown_signs_webhook_when_secret_is_configured() -> None:
@@ -183,9 +190,10 @@ def test_enabled_plugins_can_register_jira_only() -> None:
     mcp = create_mcp(_make_settings(enabled_plugins=("jira",)))
     tools = asyncio.run(mcp.list_tools())
     assert [tool.name for tool in tools] == [
-        "jira_get_latest_assigned_issue",
-        "jira_start_issue",
-        "jira_resolve_issue",
+        JIRA_LIST_OPEN_ASSIGNED_ISSUES_TOOL_NAME,
+        JIRA_GET_ISSUE_DETAILS_TOOL_NAME,
+        JIRA_START_ISSUE_TOOL_NAME,
+        JIRA_RESOLVE_ISSUE_TOOL_NAME,
     ]
 
 
