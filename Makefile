@@ -14,7 +14,7 @@ run-stdio:
 	$(UV) run work-mcp --transport stdio
 
 test:
-	$(UV) run pytest
+	$(UV) run --group dev python -m pytest
 
 init:
 	$(UV) run python scripts/init_config.py

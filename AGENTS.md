@@ -31,6 +31,7 @@ This file is written for coding agents working in this repository. Follow these 
 - Write unit tests for pure logic with meaningful branching or edge cases.
 - Use integration or wiring tests when the risk is config loading, service composition, repository behavior, or API/MCP adapters.
 - Add regression tests when changing merge logic, prompt parsing, config loading, or storage format.
+- Use `uv run --group dev python -m pytest` to run tests directly, or `make test` for the same command through the repo wrapper.
 - Check `pyproject.toml` or `Makefile` for available commands.
 
 ## Final Phase
