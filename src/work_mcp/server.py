@@ -17,7 +17,6 @@ from .config import (
     validate_settings,
 )
 from .logger import configure as configure_logger, info, error
-from .startup_checks import run_startup_checks
 from .tools import PLUGIN_REGISTRY
 
 ALLOWED_TRANSPORTS = frozenset({"stdio", "streamable-http"})
@@ -178,7 +177,6 @@ def main(argv: list[str] | None = None) -> None:
             port=args.port,
         )
         configure_logger(log_dir=settings.log_dir, level=settings.log_level)
-        run_startup_checks(settings)
         mcp = create_mcp(settings)
         transport = settings.server.transport
         if transport == "streamable-http":

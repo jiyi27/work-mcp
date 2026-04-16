@@ -11,7 +11,6 @@ from work_mcp.config import (
     DatabaseSettings,
     ServerSettings,
     Settings,
-    default_startup_settings,
 )
 from work_mcp.server import create_mcp
 from work_mcp.tools.database.base import (
@@ -56,7 +55,6 @@ _DEFAULT_MYSQL_DATABASE = DatabaseSettings(
 def _make_settings(**overrides: object) -> Settings:
     defaults = dict(
         server=_DEFAULT_SERVER,
-        startup=default_startup_settings(),
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
         jira_base_url="https://jira.example.invalid",

@@ -23,7 +23,6 @@ DEFAULT_DB_PORTS = {
 }
 DEFAULT_DB_DRIVER = "ODBC Driver 18 for SQL Server"
 DEFAULT_DB_CONNECT_TIMEOUT_SECONDS = 5
-DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS = 10
 CONFIG_FILE_LABEL = "config.yaml"
 
 
@@ -32,17 +31,6 @@ class ServerSettings:
     transport: str
     host: str | None
     port: int | None
-
-
-@dataclass(frozen=True)
-class StartupHealthcheckSettings:
-    enabled: bool
-    timeout_seconds: int
-
-
-@dataclass(frozen=True)
-class StartupSettings:
-    healthcheck: StartupHealthcheckSettings
 
 
 @dataclass(frozen=True)
@@ -78,7 +66,6 @@ class DatabaseSettings:
 @dataclass(frozen=True)
 class Settings:
     server: ServerSettings
-    startup: StartupSettings
     dingtalk_webhook_url: str
     dingtalk_secret: str | None
     jira_base_url: str | None
@@ -155,15 +142,6 @@ def default_server_settings() -> ServerSettings:
     return ServerSettings(transport=DEFAULT_TRANSPORT, host=None, port=None)
 
 
-def default_startup_settings() -> StartupSettings:
-    return StartupSettings(
-        healthcheck=StartupHealthcheckSettings(
-            enabled=False,
-            timeout_seconds=DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS,
-        )
-    )
-
-
 def _read_enabled_plugins(yaml_cfg: dict[str, Any]) -> tuple[str, ...]:
     if "plugins" not in yaml_cfg:
         raise RuntimeError("Missing plugins section in config.yaml.")
@@ -191,40 +169,6 @@ def _read_string_list(section: dict[str, Any], key: str, section_name: str) -> t
     if not isinstance(raw_value, list):
         raise RuntimeError(f"Invalid {section_name}.{key} in config.yaml. Expected a list.")
     return tuple(str(item).strip() for item in raw_value if str(item).strip())
-
-
-def _read_startup_settings(yaml_cfg: dict[str, Any]) -> StartupSettings:
-    yaml_startup = yaml_cfg.get("startup", {})
-    if not isinstance(yaml_startup, dict):
-        raise RuntimeError("Invalid startup section in config.yaml. Expected a mapping.")
-
-    yaml_healthcheck = yaml_startup.get("healthcheck", {})
-    if not isinstance(yaml_healthcheck, dict):
-        raise RuntimeError(
-            "Invalid startup.healthcheck in config.yaml. Expected a mapping."
-        )
-
-    raw_enabled = yaml_healthcheck.get("enabled", False)
-    if not isinstance(raw_enabled, bool):
-        raise RuntimeError(
-            "Invalid startup.healthcheck.enabled in config.yaml. Expected true/false."
-        )
-
-    raw_timeout_seconds = yaml_healthcheck.get(
-        "timeout_seconds",
-        DEFAULT_STARTUP_HEALTHCHECK_TIMEOUT_SECONDS,
-    )
-    timeout_seconds = _read_int(
-        raw_timeout_seconds,
-        "startup.healthcheck.timeout_seconds",
-    )
-
-    return StartupSettings(
-        healthcheck=StartupHealthcheckSettings(
-            enabled=raw_enabled,
-            timeout_seconds=timeout_seconds,
-        )
-    )
 
 
 def _read_logging_settings(yaml_cfg: dict[str, Any]) -> tuple[Path, str]:
@@ -407,11 +351,6 @@ def _read_database_settings(yaml_cfg: dict[str, Any]) -> DatabaseSettings | None
 def validate_settings(settings: Settings) -> None:
     errors: list[str] = []
 
-    if settings.startup.healthcheck.timeout_seconds <= 0:
-        errors.append(
-            "startup: startup.healthcheck.timeout_seconds must be greater than 0"
-        )
-
     if "dingtalk" in settings.enabled_plugins and not settings.dingtalk_webhook_url:
         errors.append("dingtalk: missing dingtalk.webhook_url in config.yaml")
 
@@ -483,14 +422,13 @@ def validate_settings(settings: Settings) -> None:
         raise RuntimeError(f"Invalid configuration for enabled plugins:\n{lines}")
 
 
-def get_settings() -> Settings:
-    yaml_cfg = load_yaml_config()
+def get_settings(yaml_path: Path | None = None) -> Settings:
+    yaml_cfg = load_yaml_config(yaml_path)
     log_dir, log_level = _read_logging_settings(yaml_cfg)
     webhook_url, dingtalk_secret = _read_dingtalk_settings(yaml_cfg)
     jira_fields = _read_jira_settings(yaml_cfg)
     settings = Settings(
         server=default_server_settings(),
-        startup=_read_startup_settings(yaml_cfg),
         log_dir=log_dir,
         log_level=log_level,
         enabled_plugins=_read_enabled_plugins(yaml_cfg),

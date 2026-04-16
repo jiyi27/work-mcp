@@ -4,16 +4,14 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from work_mcp.check import has_check_errors, print_check_report, run_checks
 from work_mcp.config import DB_TYPE_MYSQL, DB_TYPE_SQLSERVER, PROJECT_ROOT
 from work_mcp.setup import (
     SetupAnswers,
     build_updated_yaml,
-    connectivity_hint,
     current_value_label,
     default_driver_for_db,
     default_port_for_db,
-    diagnose,
-    has_errors,
     is_database_config_complete,
     is_jira_config_complete,
     is_log_search_config_complete,
@@ -372,16 +370,11 @@ def main() -> None:
         print("配置保存成功。")
 
         print("\n开始执行配置检查...")
-        results = diagnose(project_root)
-        for result in results:
-            print(f"[{result.level}] {result.message}")
+        results = run_checks(project_root)
+        print_check_report(results)
 
-        if has_errors(results):
-            hint = connectivity_hint(project_root)
-            msg = "配置校验未通过。请重新运行 `make init` 修正配置。"
-            if hint:
-                msg += f"\n{hint}"
-            raise SystemExit(msg)
+        if has_check_errors(results):
+            raise SystemExit("配置校验未通过。请重新运行 `make init` 修正配置。")
 
         print("运行 `uv run work-mcp` 启动服务。")
     except RuntimeError as exc:

@@ -1,4 +1,4 @@
-.PHONY: run run-http run-stdio test init doctor
+.PHONY: run run-http run-stdio test init check
 
 UV ?= uv
 HOST ?= 0.0.0.0
@@ -19,5 +19,5 @@ test:
 init:
 	$(UV) run python scripts/init_config.py
 
-doctor:
-	$(UV) run python scripts/doctor.py
+check:
+	$(UV) run python scripts/check.py

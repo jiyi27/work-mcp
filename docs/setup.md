@@ -113,10 +113,10 @@ uv run python scripts/inspect_jira_issue_workflow.py <ISSUE-KEY>
 如果手动修改了 `.env` 或 `config.yaml`, 可以单独运行
 
 ```bash
-make doctor
+make check
 ```
 
-输出会包含 `[ok]` / `[warn]` / `[error]`, 有 `[error]` 时先修正配置再启动服务
+只会检查当前启用插件的配置与连通性。有 `[error]` 时先修正配置再启动服务。
 
 ### 4.3. SQL Server 依赖
 

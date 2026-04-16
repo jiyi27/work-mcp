@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from queue import Empty, Queue
-from threading import Thread
 from typing import Any
 
 import yaml
@@ -14,14 +11,12 @@ from .config import (
     DB_TYPE_MYSQL,
     DB_TYPE_SQLSERVER,
     ConfigError,
-    DEFAULT_DB_CONNECT_TIMEOUT_SECONDS,
     DEFAULT_DB_DRIVER,
     DEFAULT_DB_PORTS,
     PROJECT_ROOT,
     YAML_CONFIG_FILE,
     _format_yaml_error,
 )
-from .tools.database.factory import check_database_connectivity
 
 OPTIONAL_PLUGIN_DATABASE = "database"
 OPTIONAL_PLUGIN_LOG_SEARCH = "log_search"
@@ -54,12 +49,6 @@ class SetupAnswers:
     jira_base_url: str
     jira_api_token: str
     jira_project_key: str
-
-
-@dataclass(frozen=True)
-class DiagnosticResult:
-    level: str
-    message: str
 
 
 def yaml_config_path(project_root: Path = PROJECT_ROOT) -> Path:
@@ -289,194 +278,6 @@ def get_installed_odbc_drivers() -> list[str] | None:
     return sorted(str(item) for item in pyodbc.drivers())
 
 
-def diagnose(project_root: Path = PROJECT_ROOT) -> list[DiagnosticResult]:
-    results: list[DiagnosticResult] = [_diagnose_uv()]
-
-    yaml_path = yaml_config_path(project_root)
-    results.append(_file_result(yaml_path, "config"))
-
-    try:
-        yaml_values = load_existing_yaml(yaml_path)
-    except RuntimeError as exc:
-        results.append(DiagnosticResult("error", str(exc)))
-        return results
-
-    plugin_names = _coerce_enabled_plugins(yaml_values.get("plugins"))
-    if plugin_names:
-        results.append(DiagnosticResult("ok", f"enabled plugins: {', '.join(plugin_names)}"))
-    else:
-        results.append(DiagnosticResult("ok", "enabled plugins: none"))
-
-    if OPTIONAL_PLUGIN_DATABASE in plugin_names:
-        yaml_db = yaml_values.get("database")
-        if not isinstance(yaml_db, dict):
-            results.append(DiagnosticResult("error", "database section is missing from config.yaml"))
-        else:
-            db_type = normalize_text_value(yaml_db.get("type")).lower()
-            if not db_type:
-                results.append(DiagnosticResult("error", "database.type is missing from config.yaml"))
-            elif db_type not in {DB_TYPE_MYSQL, DB_TYPE_SQLSERVER}:
-                results.append(
-                    DiagnosticResult("error", "database.type must be either 'mysql' or 'sqlserver'")
-                )
-            else:
-                results.append(DiagnosticResult("ok", f"database.type = {db_type}"))
-
-            required_keys = ["host", "user", "password"]
-            if db_type == DB_TYPE_SQLSERVER:
-                required_keys.append("driver")
-            for key in required_keys:
-                if normalize_text_value(yaml_db.get(key)):
-                    results.append(DiagnosticResult("ok", f"database.{key} is set"))
-                else:
-                    results.append(
-                        DiagnosticResult("error", f"database.{key} is missing from config.yaml")
-                    )
-
-            timeout_raw = yaml_db.get("connect_timeout_seconds")
-            if timeout_raw is not None:
-                try:
-                    validate_positive_int(str(timeout_raw), "database.connect_timeout_seconds")
-                except RuntimeError as exc:
-                    results.append(DiagnosticResult("error", str(exc)))
-                else:
-                    results.append(DiagnosticResult("ok", "database.connect_timeout_seconds is valid"))
-            else:
-                results.append(
-                    DiagnosticResult("ok", "database.connect_timeout_seconds will use the default")
-                )
-
-            if db_type == DB_TYPE_SQLSERVER:
-                installed_drivers = get_installed_odbc_drivers()
-                if installed_drivers is None:
-                    results.append(
-                        DiagnosticResult("error", "未安装 Python 依赖 pyodbc，请先执行 `uv sync`。")
-                    )
-                elif not installed_drivers:
-                    results.append(
-                        DiagnosticResult(
-                            "error",
-                            "未检测到可用的 SQL Server ODBC driver，请先在本机安装后再继续。",
-                        )
-                    )
-                else:
-                    driver_name = normalize_text_value(yaml_db.get("driver"))
-                    if driver_name and driver_name in installed_drivers:
-                        results.append(
-                            DiagnosticResult("ok", f"ODBC driver found: {driver_name}")
-                        )
-                    else:
-                        joined = ", ".join(installed_drivers) if installed_drivers else "none"
-                        results.append(
-                            DiagnosticResult(
-                                "error",
-                                f"Configured ODBC driver was not found. Installed drivers: {joined}.",
-                            )
-                        )
-
-            if _can_run_database_probe(yaml_db):
-                timeout_seconds = int(
-                    yaml_db.get("connect_timeout_seconds", DEFAULT_DB_CONNECT_TIMEOUT_SECONDS)
-                )
-                try:
-                    probe = _probe_database_connectivity(
-                        _build_database_settings(yaml_db),
-                        timeout_seconds=timeout_seconds,
-                    )
-                except RuntimeError as exc:
-                    results.append(
-                        DiagnosticResult("error", f"database connectivity failed: {exc}")
-                    )
-                else:
-                    results.append(
-                        DiagnosticResult(
-                            "ok",
-                            "database connectivity succeeded",
-                        )
-                    )
-
-    if OPTIONAL_PLUGIN_LOG_SEARCH in plugin_names:
-        log_search_section = yaml_values.get("log_search")
-        if not isinstance(log_search_section, dict):
-            results.append(
-                DiagnosticResult("error", "log_search section is missing from config.yaml")
-            )
-        else:
-            raw_log_base_dir = normalize_text_value(log_search_section.get("log_base_dir"))
-            try:
-                validated = validate_log_base_dir(raw_log_base_dir)
-            except RuntimeError as exc:
-                results.append(DiagnosticResult("error", str(exc)))
-            else:
-                results.append(DiagnosticResult("ok", f"log_base_dir = {validated}"))
-
-    if OPTIONAL_PLUGIN_DINGTALK in plugin_names:
-        yaml_dingtalk = yaml_values.get("dingtalk")
-        webhook = str(yaml_dingtalk.get("webhook_url", "") if isinstance(yaml_dingtalk, dict) else "").strip()
-        if webhook:
-            results.append(DiagnosticResult("ok", "dingtalk.webhook_url is set"))
-        else:
-            results.append(
-                DiagnosticResult("error", "dingtalk.webhook_url is missing from config.yaml")
-            )
-
-    if OPTIONAL_PLUGIN_JIRA in plugin_names:
-        yaml_jira = yaml_values.get("jira")
-        if not isinstance(yaml_jira, dict):
-            results.append(DiagnosticResult("error", "jira section is missing from config.yaml"))
-        else:
-            for key in ("base_url", "api_token", "project_key"):
-                if normalize_text_value(yaml_jira.get(key)):
-                    results.append(DiagnosticResult("ok", f"jira.{key} is set"))
-                else:
-                    results.append(
-                        DiagnosticResult("error", f"jira.{key} is missing from config.yaml")
-                    )
-
-            latest_statuses = yaml_jira.get("latest_assigned_statuses", [])
-            if isinstance(latest_statuses, list) and any(
-                normalize_text_value(item) for item in latest_statuses
-            ):
-                results.append(DiagnosticResult("ok", "jira.latest_assigned_statuses is set"))
-            else:
-                results.append(
-                    DiagnosticResult(
-                        "error", "jira.latest_assigned_statuses is missing from config.yaml"
-                    )
-                )
-
-            for key in ("start_target_status", "resolve_target_status"):
-                if normalize_text_value(yaml_jira.get(key)):
-                    results.append(DiagnosticResult("ok", f"jira.{key} is set"))
-                else:
-                    results.append(
-                        DiagnosticResult("error", f"jira.{key} is missing from config.yaml")
-                    )
-
-    return results
-
-
-def has_errors(results: list[DiagnosticResult]) -> bool:
-    return any(result.level == "error" for result in results)
-
-
-def connectivity_hint(project_root: Path = PROJECT_ROOT) -> str:
-    yaml_path = yaml_config_path(project_root)
-    try:
-        yaml_values = load_existing_yaml(yaml_path)
-    except RuntimeError:
-        return ""
-    plugin_names = _coerce_enabled_plugins(yaml_values.get("plugins"))
-    items = []
-    if OPTIONAL_PLUGIN_DATABASE in plugin_names:
-        items.append("数据库是否从当前机器可以连通")
-    if OPTIONAL_PLUGIN_JIRA in plugin_names:
-        items.append("Jira 是否从当前机器可以连通")
-    if not items:
-        return ""
-    return "请检查：" + "、".join(items) + "。"
-
-
 def yaml_value(project_root: Path) -> dict[str, Any]:
     return load_existing_yaml(yaml_config_path(project_root))
 
@@ -498,80 +299,3 @@ def _coerce_enabled_plugins(raw_plugins: Any) -> list[str]:
     if not isinstance(raw_enabled, list):
         return []
     return [str(item).strip() for item in raw_enabled if str(item).strip()]
-
-
-def _diagnose_uv() -> DiagnosticResult:
-    if shutil.which("uv"):
-        return DiagnosticResult("ok", "uv is available")
-    return DiagnosticResult("error", "uv is not installed or not on PATH")
-
-
-def _file_result(path: Path, label: str) -> DiagnosticResult:
-    if path.exists():
-        return DiagnosticResult("ok", f"{label} file found: {path.name}")
-    return DiagnosticResult("warn", f"{label} file not found: {path.name}")
-
-
-def _can_run_database_probe(yaml_db: dict[str, Any]) -> bool:
-    db_type = normalize_text_value(yaml_db.get("type")).lower()
-    if db_type not in {DB_TYPE_MYSQL, DB_TYPE_SQLSERVER}:
-        return False
-    required_keys = ["host", "user", "password"]
-    if db_type == DB_TYPE_SQLSERVER:
-        required_keys.append("driver")
-    return all(normalize_text_value(yaml_db.get(key)) for key in required_keys)
-
-
-def _probe_database_connectivity(
-    settings: Any,
-    *,
-    timeout_seconds: int,
-) -> dict[str, str]:
-    result_queue: Queue[tuple[bool, object]] = Queue(maxsize=1)
-
-    def worker() -> None:
-        try:
-            result = check_database_connectivity(
-                settings,
-                timeout_seconds=timeout_seconds,
-            )
-        except Exception as _exc:
-            result_queue.put((False, _exc))
-            return
-        result_queue.put((True, result))
-
-    thread = Thread(target=worker, daemon=True)
-    thread.start()
-    thread.join(timeout_seconds)
-
-    if thread.is_alive():
-        raise RuntimeError(f"timed out after {timeout_seconds} seconds")
-
-    try:
-        ok, payload = result_queue.get_nowait()
-    except Empty as exc:
-        raise RuntimeError("probe finished without returning a result") from exc
-
-    if ok:
-        return payload  # type: ignore[return-value]
-    raise RuntimeError(str(payload))
-
-
-def _build_database_settings(yaml_db: dict[str, Any]) -> Any:
-    from .config import DatabaseSettings
-
-    db_type = normalize_text_value(yaml_db.get("type")).lower()
-    raw_trust_cert = yaml_db.get("trust_server_certificate", False)
-    trust_server_certificate = bool(raw_trust_cert) if db_type == DB_TYPE_SQLSERVER else False
-    return DatabaseSettings(
-        db_type=db_type,
-        host=normalize_text_value(yaml_db.get("host")),
-        port=int(yaml_db.get("port", DEFAULT_DB_PORTS.get(db_type, 1433))),
-        user=normalize_text_value(yaml_db.get("user")),
-        password=normalize_text_value(yaml_db.get("password")),
-        driver=normalize_text_value(yaml_db.get("driver")),
-        trust_server_certificate=trust_server_certificate,
-        connect_timeout_seconds=int(
-            yaml_db.get("connect_timeout_seconds", DEFAULT_DB_CONNECT_TIMEOUT_SECONDS)
-        ),
-    )

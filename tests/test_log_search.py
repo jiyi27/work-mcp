@@ -8,7 +8,6 @@ from work_mcp.config import (
     LogSearchSettings,
     ServerSettings,
     Settings,
-    default_startup_settings,
 )
 from work_mcp.server import create_mcp
 from work_mcp.tools.log_search.constants import MAX_FILE_SIZE_BYTES, MAX_RESULTS
@@ -19,7 +18,6 @@ _DEFAULT_SERVER = ServerSettings(transport="stdio", host=None, port=None)
 def _make_settings(tmp_path: Path, **overrides: object) -> Settings:
     defaults = dict(
         server=_DEFAULT_SERVER,
-        startup=default_startup_settings(),
         dingtalk_webhook_url="https://example.invalid/webhook",
         dingtalk_secret=None,
         jira_base_url="https://jira.example.invalid",

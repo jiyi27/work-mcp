@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import time
 from pathlib import Path
 
 import pytest
@@ -8,8 +6,6 @@ import pytest
 from work_mcp.setup import (
     SetupAnswers,
     build_updated_yaml,
-    diagnose,
-    has_errors,
     is_jira_config_complete,
     is_log_search_config_complete,
     load_existing_yaml,
@@ -166,145 +162,6 @@ def test_build_updated_yaml_updates_plugins_enabled_and_preserves_inactive_secti
     assert updated["plugins"]["enabled"] == []
     # Inactive sections are preserved, not removed
     assert updated["log_search"]["log_base_dir"] == "/tmp/existing-logs"
-
-
-def test_diagnose_reports_success_for_valid_mysql_configuration(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir()
-    (tmp_path / "config.yaml").write_text(
-        f"""
-plugins:
-  enabled:
-    - database
-    - log_search
-log_search:
-  log_base_dir: {log_dir}
-database:
-  type: mysql
-  host: db.example.internal
-  port: 3306
-  user: readonly_user
-  password: secret
-  connect_timeout_seconds: 5
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr("work_mcp.setup.shutil.which", lambda name: "/usr/bin/uv")
-    monkeypatch.setattr(
-        "work_mcp.setup.check_database_connectivity",
-        lambda config, timeout_seconds: {"database_name": ""},
-    )
-
-    results = diagnose(tmp_path)
-
-    assert has_errors(results) is False
-    assert any(result.message == "uv is available" for result in results)
-    assert any(result.message == "database connectivity succeeded" for result in results)
-
-
-def test_diagnose_reports_missing_sqlserver_driver(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir()
-    (tmp_path / "config.yaml").write_text(
-        f"""
-plugins:
-  enabled:
-    - database
-    - log_search
-log_search:
-  log_base_dir: {log_dir}
-database:
-  type: sqlserver
-  host: db.example.internal
-  port: 1433
-  user: readonly_user
-  password: secret
-  driver: ODBC Driver 18 for SQL Server
-  trust_server_certificate: false
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr("work_mcp.setup.shutil.which", lambda name: "/usr/bin/uv")
-    monkeypatch.setattr("work_mcp.setup.get_installed_odbc_drivers", lambda: [])
-    monkeypatch.setattr(
-        "work_mcp.setup.check_database_connectivity",
-        lambda config, timeout_seconds: {"database_name": ""},
-    )
-
-    results = diagnose(tmp_path)
-
-    assert has_errors(results) is True
-    assert any(
-        "未检测到可用的 SQL Server ODBC driver" in result.message
-        for result in results
-    )
-
-
-def test_diagnose_reports_database_probe_timeout(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "config.yaml").write_text(
-        """
-plugins:
-  enabled:
-    - database
-database:
-  type: mysql
-  host: db.example.internal
-  port: 3306
-  user: readonly_user
-  password: secret
-  connect_timeout_seconds: 1
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr("work_mcp.setup.shutil.which", lambda name: "/usr/bin/uv")
-
-    def slow_probe(config, timeout_seconds):
-        time.sleep(timeout_seconds + 0.2)
-        return {"database_name": ""}
-
-    monkeypatch.setattr("work_mcp.setup.check_database_connectivity", slow_probe)
-
-    results = diagnose(tmp_path)
-
-    assert has_errors(results) is True
-    assert any(
-        result.message == "database connectivity failed: timed out after 1 seconds"
-        for result in results
-    )
-
-
-def test_diagnose_accepts_empty_enabled_plugins(monkeypatch, tmp_path: Path) -> None:
-    (tmp_path / "config.yaml").write_text(
-        """
-plugins:
-  enabled: []
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr("work_mcp.setup.shutil.which", lambda name: "/usr/bin/uv")
-
-    results = diagnose(tmp_path)
-
-    assert has_errors(results) is False
-    assert any(result.message == "enabled plugins: none" for result in results)
-
 
 def test_is_jira_config_complete_treats_none_as_missing() -> None:
     assert is_jira_config_complete(
