@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from mcp.server.fastmcp import FastMCP
 
 from ...config import Settings
+from .constants import MAX_SEARCH_MATCHES
 from .service import RemoteFsService
 from .strings import (
     DESCRIBE_ENVIRONMENT_DESCRIPTION,
@@ -51,9 +52,8 @@ def register_remote_fs_tools(mcp: FastMCP, settings: Settings) -> None:
             str, "File name filter such as **/*.py or **/*.log."
         ] = "",
         regex: Annotated[bool, "Treat query as a regular expression."] = False,
-        max_matches: int = 50,
     ) -> dict[str, Any]:
-        return await svc.search_files(query, root, path_glob, regex, max_matches)
+        return await svc.search_files(query, root, path_glob, regex, MAX_SEARCH_MATCHES)
 
     @mcp.tool(name=TOOL_READ_FILE, description=READ_FILE_DESCRIPTION)
     async def read_file(

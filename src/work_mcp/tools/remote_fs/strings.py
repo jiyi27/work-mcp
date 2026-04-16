@@ -51,9 +51,10 @@ Use this only after identifying the remote path through remote_describe_environm
 """
 
 SEARCH_FILE_REVERSE_DESCRIPTION = """\
-Search a known remote text file from the end and return the newest matches first.
+Search a single known file on the remote server from the end, returning the newest matches first.
 
-Use this for server or test-machine log inspection when the remote log path is already known.
+Use this for log inspection when the exact remote file path is already known.
+For cross-file content search or to locate the file path first, use remote_search_files instead.
 """
 
 # ---------------------------------------------------------------------------
