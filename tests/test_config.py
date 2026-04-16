@@ -356,6 +356,65 @@ database:
     assert settings.database.connect_timeout_seconds == 9
 
 
+def test_get_settings_ignores_invalid_jira_section_when_jira_is_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins:
+  enabled:
+    - database
+database:
+  type: mysql
+  host: mysql.example.internal
+  user: readonly_user
+  password: secret
+jira: disabled
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    settings = config_module.get_settings()
+
+    assert settings.enabled_plugins == ("database",)
+    assert settings.database is not None
+    assert settings.jira_base_url is None
+
+
+def test_get_settings_ignores_invalid_remote_fs_section_when_remote_fs_is_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    yaml_path = tmp_path / "config.yaml"
+    yaml_path.write_text(
+        """
+plugins:
+  enabled:
+    - database
+database:
+  type: mysql
+  host: mysql.example.internal
+  user: readonly_user
+  password: secret
+remote_fs:
+  roots:
+    - name: app
+      path: /path/that/does/not/exist
+      kind: code
+      description: invalid while disabled
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "PROJECT_ROOT", tmp_path)
+
+    settings = config_module.get_settings()
+
+    assert settings.enabled_plugins == ("database",)
+    assert settings.database is not None
+    assert settings.remote_fs is None
+
+
 def test_get_settings_reads_mysql_config_when_database_plugin_enabled(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

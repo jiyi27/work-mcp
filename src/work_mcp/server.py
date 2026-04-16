@@ -30,7 +30,9 @@ ENVIRONMENT FACTS
 - PHP is interpreted on the server, so no build step is normally required after sync.
 - The local machine may not have the runtime config, shared database, global constants, or external service connections that exist on the server.
 - Under normal conditions, local source code and server source code should match.
+"""
 
+"""
 REMOTE FILE TOOLS: BOUNDARIES
 - Remote filesystem tools are for inspecting runtime information on the server.
 - Use them for:
@@ -53,7 +55,6 @@ OPERATING RULE
 - Use local code for source inspection.
 - Use remote tools only for runtime evidence and server-side environment data.
 """
-
 
 # AOP-style cross-cutting concern: intercept every tool call to inject structured logging.
 # In Python, this is the Decorator pattern — wrapping a function to extend its behavior without modifying it.

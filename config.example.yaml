@@ -18,24 +18,6 @@ logging:
   # Default: info
   level: info
 
-
-# -----------------------------------------------------------------------------
-# Startup health checks
-# -----------------------------------------------------------------------------
-startup:
-  healthcheck:
-    # Whether to probe external dependencies of enabled plugins on startup.
-    # When enabled, the server will abort startup if any probe fails,
-    # helping catch configuration errors early.
-    # Currently supported: jira, database. Other plugins only do static config validation.
-    # Default: false
-    enabled: false
-
-    # Timeout in seconds for each probe.
-    # Default: 10
-    timeout_seconds: 10
-
-
 # -----------------------------------------------------------------------------
 # Plugin toggles
 # Only plugins listed here will have their tools registered.
@@ -59,11 +41,6 @@ plugins:
 # -----------------------------------------------------------------------------
 remote_fs:
   roots:
-    - name: app
-      path: /srv/myapp
-      kind: code
-      description: Deployed application source
-
     - name: logs
       path: /var/log/myapp
       kind: logs
@@ -73,17 +50,6 @@ remote_fs:
       path: /etc/myapp
       kind: config
       description: Production configuration
-
-
-# -----------------------------------------------------------------------------
-# Plugin: log_search
-# Required: plugins.enabled contains "log_search"
-# -----------------------------------------------------------------------------
-log_search:
-  # Absolute path to the log root directory. Tools can only access files under
-  # this directory, which must already exist.
-  # Required
-  log_base_dir: /absolute/path/to/logs
 
 
 # -----------------------------------------------------------------------------

@@ -302,6 +302,19 @@ def _read_jira_settings(yaml_cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _default_jira_settings() -> dict[str, Any]:
+    return {
+        "jira_base_url": None,
+        "jira_api_token": None,
+        "jira_project_key": None,
+        "jira_latest_assigned_statuses": (),
+        "jira_start_target_status": "",
+        "jira_resolve_target_status": "",
+        "jira_attachment_max_images": 5,
+        "jira_attachment_max_bytes": 1_048_576,
+    }
+
+
 def _default_db_port(db_type: str) -> int:
     return DEFAULT_DB_PORTS.get(db_type, DEFAULT_DB_PORTS[DB_TYPE_SQLSERVER])
 
@@ -424,17 +437,25 @@ def validate_settings(settings: Settings) -> None:
 
 def get_settings(yaml_path: Path | None = None) -> Settings:
     yaml_cfg = load_yaml_config(yaml_path)
+    enabled_plugins = _read_enabled_plugins(yaml_cfg)
     log_dir, log_level = _read_logging_settings(yaml_cfg)
-    webhook_url, dingtalk_secret = _read_dingtalk_settings(yaml_cfg)
-    jira_fields = _read_jira_settings(yaml_cfg)
+    if "dingtalk" in enabled_plugins:
+        webhook_url, dingtalk_secret = _read_dingtalk_settings(yaml_cfg)
+    else:
+        webhook_url, dingtalk_secret = "", None
+    jira_fields = (
+        _read_jira_settings(yaml_cfg)
+        if "jira" in enabled_plugins
+        else _default_jira_settings()
+    )
     settings = Settings(
         server=default_server_settings(),
         log_dir=log_dir,
         log_level=log_level,
-        enabled_plugins=_read_enabled_plugins(yaml_cfg),
-        log_search=_read_log_search_settings(yaml_cfg),
-        database=_read_database_settings(yaml_cfg),
-        remote_fs=_read_remote_fs_settings(yaml_cfg),
+        enabled_plugins=enabled_plugins,
+        log_search=_read_log_search_settings(yaml_cfg) if "log_search" in enabled_plugins else None,
+        database=_read_database_settings(yaml_cfg) if "database" in enabled_plugins else None,
+        remote_fs=_read_remote_fs_settings(yaml_cfg) if "remote_fs" in enabled_plugins else None,
         dingtalk_webhook_url=webhook_url,
         dingtalk_secret=dingtalk_secret,
         **jira_fields,
