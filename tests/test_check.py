@@ -66,7 +66,9 @@ jira:
     assert len(results) == 1
     assert results[0].module == "jira"
     assert [line.message for line in results[0].lines] == [
-        "base_url=https://jira.example.invalid project_key=IOS",
+        "current config:",
+        "- base_url=https://jira.example.invalid",
+        "- project_key=IOS",
         "connectivity check failed: request timed out",
         "please check the current module config or network access",
     ]

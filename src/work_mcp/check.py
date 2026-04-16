@@ -64,17 +64,16 @@ def _run_plugin_check(settings: Settings, plugin_name: str) -> ModuleCheckResult
 
 
 def _check_jira(settings: Settings) -> ModuleCheckResult:
-    summary = (
-        f"base_url={settings.jira_base_url} "
-        f"project_key={settings.jira_project_key}"
+    config_lines = _config_block(
+        f"base_url={settings.jira_base_url}",
+        f"project_key={settings.jira_project_key}",
     )
     try:
         check_jira_connectivity(settings, timeout_seconds=5)
     except RuntimeError as exc:
         return ModuleCheckResult(
             module="jira",
-            lines=(
-                CheckLine("info", summary),
+            lines=config_lines + (
                 CheckLine("error", str(exc)),
                 CheckLine("info", GENERIC_CONNECTIVITY_INFO),
             ),
@@ -103,6 +102,7 @@ def _check_database(settings: Settings) -> ModuleCheckResult:
     ]
     if database.db_type == DB_TYPE_SQLSERVER:
         summary_parts.append(f"driver={database.driver}")
+    config_lines = _config_block(*summary_parts)
     try:
         check_database_connectivity(
             database,
@@ -111,8 +111,7 @@ def _check_database(settings: Settings) -> ModuleCheckResult:
     except RuntimeError as exc:
         return ModuleCheckResult(
             module="database",
-            lines=(
-                CheckLine("info", " ".join(summary_parts)),
+            lines=config_lines + (
                 CheckLine("error", str(exc)),
                 CheckLine("info", GENERIC_CONNECTIVITY_INFO),
             ),
@@ -180,6 +179,12 @@ def _group_config_error(message: str) -> list[ModuleCheckResult]:
     ]
 
 
+def _config_block(*items: str) -> tuple[CheckLine, ...]:
+    lines = [CheckLine("plain", "current config:")]
+    lines.extend(CheckLine("plain", f"- {item}") for item in items)
+    return tuple(lines)
+
+
 def print_check_report(results: list[ModuleCheckResult]) -> None:
     if not results:
         print("all checks passed")
@@ -189,6 +194,9 @@ def print_check_report(results: list[ModuleCheckResult]) -> None:
             print()
         print(f"[module] {result.module}")
         for line in result.lines:
+            if line.level == "plain":
+                print(line.message)
+                continue
             print(f"[{line.level}] {line.message}")
     if not has_check_errors(results):
         print()
