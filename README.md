@@ -9,7 +9,7 @@ Tools are grouped by plugin. Each plugin is enabled or disabled as a unit in `co
 | `database`  | `db_list_databases`, `db_list_tables`, `db_get_table_schema`, `db_execute_query` |
 | `dingtalk`  | `dingtalk_send_markdown`                                            |
 | `jira`      | `jira_list_open_assigned_issues`, `jira_get_issue_details`, `jira_start_issue`, `jira_resolve_issue` |
-| `log_search` | `list_log_files`, `search_log` |
+| `log_search` | `list_log_files`, `search_log` *(deprecated, use `remote_fs`)* |
 | `remote_fs` | `remote_describe_environment`, `remote_list_tree`, `remote_grep`, `remote_read_file`, `remote_search_file_reverse` |
 
 ## Configuration
@@ -124,6 +124,8 @@ These must be **exact Jira status names** (not category names like `In Progress`
 > Jira image attachments are currently exposed as metadata only. Most MCP coding clients still operate as text-first chat workflows, and returning raw image bytes or base64 does not reliably trigger image understanding. In practice that mostly wastes context window, so this server surfaces attachment metadata and asks the agent to request a user summary when visual details may matter.
 
 ### Log Search
+
+> **Deprecated** — `log_search` is superseded by `remote_fs`. Use `remote_grep` and `remote_search_file_reverse` from the `remote_fs` plugin instead.
 
 Configure a log root directory that the tools can browse and search.
 
