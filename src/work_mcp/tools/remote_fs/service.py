@@ -94,16 +94,16 @@ def _should_skip_root_level_entry(parent: Path, child: Path) -> bool:
     return parent == child.parent and _is_hidden(child)
 
 
-def _apply_directory_filters(dirnames: list[str], current: Path, root: Path) -> None:
+def _apply_directory_filters(dir_names: list[str], current: Path, root: Path) -> None:
     kept = []
-    for dirname in dirnames:
-        child = current / dirname
+    for dir_name in dir_names:
+        child = current / dir_name
         if _should_skip_tree_directory(child):
             continue
         if current == root and _should_skip_root_level_entry(current, child):
             continue
-        kept.append(dirname)
-    dirnames[:] = kept
+        kept.append(dir_name)
+    dir_names[:] = kept
 
 
 class RemoteFsService:
@@ -291,9 +291,9 @@ class RemoteFsService:
         search_dirs: list[Path] = []
         if directory:
             matched = False
-            for r in self._settings.roots:
-                if directory == r.name or directory == str(r.path):
-                    search_dirs.append(r.path)
+            for root in self._settings.roots:
+                if directory == root.name or directory == str(root.path):
+                    search_dirs.append(root.path)
                     matched = True
                     break
             if not matched:
@@ -303,7 +303,7 @@ class RemoteFsService:
                     return error
                 search_dirs.append(dir_path)
         else:
-            search_dirs = [r.path for r in self._settings.roots]
+            search_dirs = [root.path for root in self._settings.roots]
 
         # Compile regex if needed.
         pattern: re.Pattern[str] | None = None
@@ -321,11 +321,11 @@ class RemoteFsService:
         search_hits: list[dict[str, Any]] = []
         truncated = False
 
-        for search_root in search_dirs:
+        for search_dir in search_dirs:
             if truncated:
                 break
-            truncated = await self._search_in_root(
-                search_root, normalized_query, path_glob, pattern, max_matches, search_hits,
+            truncated = await self._search_in_directory(
+                search_dir, normalized_query, path_glob, pattern, max_matches, search_hits,
             )
 
         if not search_hits:
@@ -344,8 +344,8 @@ class RemoteFsService:
         }
 
     @staticmethod
-    async def _search_in_root(
-            root: Path,
+    async def _search_in_directory(
+            directory: Path,
         normalized_query: str,
         path_glob: str,
         pattern: re.Pattern[str] | None,
@@ -353,20 +353,20 @@ class RemoteFsService:
         search_hits: list[dict[str, Any]],
     ) -> bool:
         """Walk files under root and collect one result per matched file."""
-        for dirpath, dirnames, filenames in os.walk(root):
+        for dirpath, dir_names, filenames in os.walk(directory):
             current_dir = Path(dirpath)
-            _apply_directory_filters(dirnames, current_dir, root)
+            _apply_directory_filters(dir_names, current_dir, directory)
             for filename in filenames:
                 if len(search_hits) >= max_matches:
                     return True
 
                 file_path = current_dir / filename
-                if current_dir == root and _should_skip_root_level_entry(current_dir, file_path):
+                if current_dir == directory and _should_skip_root_level_entry(current_dir, file_path):
                     continue
 
                 # Apply glob filter on the path relative to root.
                 if path_glob:
-                    relative_path = file_path.relative_to(root)
+                    relative_path = file_path.relative_to(directory)
                     if not _matches_path_glob(relative_path, path_glob):
                         continue
 
@@ -395,7 +395,6 @@ class RemoteFsService:
                         match_count = 0
                         async for line in f:
                             line_no += 1
-                            hit = False
                             if pattern is not None:
                                 hit = pattern.search(line) is not None
                             else:
