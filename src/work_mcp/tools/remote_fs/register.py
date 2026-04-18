@@ -44,16 +44,16 @@ def register_remote_fs_tools(mcp: FastMCP, settings: Settings) -> None:
             str,
             "Text to find in file contents. Omit to search by file name only using path_glob.",
         ] = "",
-        root: Annotated[
+        directory: Annotated[
             str,
-            "Root name or path to limit the search scope. Omit to search all roots.",
+            "Directory name or path to limit the search scope. Omit to search all directories.",
         ] = "",
         path_glob: Annotated[
             str, "File name filter such as **/*.py or **/*.log."
         ] = "",
         regex: Annotated[bool, "Treat query as a regular expression."] = False,
     ) -> dict[str, Any]:
-        return await svc.search_files(query, root, path_glob, regex, MAX_SEARCH_MATCHES)
+        return await svc.search_files(query, directory, path_glob, regex, MAX_SEARCH_MATCHES)
 
     @mcp.tool(name=TOOL_READ_FILE, description=READ_FILE_DESCRIPTION)
     async def read_file(

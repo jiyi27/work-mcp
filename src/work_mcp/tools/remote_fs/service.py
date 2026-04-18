@@ -269,14 +269,14 @@ class RemoteFsService:
     async def search_files(
         self,
         query: str,
-        root: str,
+        directory: str,
         path_glob: str,
         regex: bool,
         max_matches: int,
     ) -> dict[str, Any]:
         query = query.strip()
         normalized_query = query.lower()
-        root = root.strip()
+        directory = directory.strip()
         path_glob = path_glob.strip()
         max_matches = min(max(1, max_matches), MAX_SEARCH_MATCHES)
 
@@ -287,24 +287,23 @@ class RemoteFsService:
                 "hint": HINT_SEARCH_INVALID_ARGUMENT,
             }
 
-        # Determine which roots to search.
-        search_roots: list[Path] = []
-        if root:
-            # Match by name or by path.
+        # Resolve directories to search
+        search_dirs: list[Path] = []
+        if directory:
             matched = False
             for r in self._settings.roots:
-                if root == r.name or root == str(r.path):
-                    search_roots.append(r.path)
+                if directory == r.name or directory == str(r.path):
+                    search_dirs.append(r.path)
                     matched = True
                     break
             if not matched:
-                # root may be a subdirectory of a configured root — verify it is allowed and is a directory.
-                dir_path, error = self._resolve_directory(root)
+                # directory may be a subdirectory of a configured root — verify it is allowed and is a directory.
+                dir_path, error = self._resolve_directory(directory)
                 if error is not None:
                     return error
-                search_roots.append(dir_path)
+                search_dirs.append(dir_path)
         else:
-            search_roots = [r.path for r in self._settings.roots]
+            search_dirs = [r.path for r in self._settings.roots]
 
         # Compile regex if needed.
         pattern: re.Pattern[str] | None = None
@@ -322,7 +321,7 @@ class RemoteFsService:
         search_hits: list[dict[str, Any]] = []
         truncated = False
 
-        for search_root in search_roots:
+        for search_root in search_dirs:
             if truncated:
                 break
             truncated = await self._search_in_root(
