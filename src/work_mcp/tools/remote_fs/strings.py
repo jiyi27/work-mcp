@@ -105,13 +105,9 @@ HINT_FILE_TOO_LARGE = (
 # describe_environment hints
 # ---------------------------------------------------------------------------
 HINT_ROOTS_FOUND = (
-    "The remote environment description may include useful roots such as code, logs, "
-    "config, or runtime data, and it may also omit information you still need. If the "
-    "returned roots are enough, continue with "
-    f"{TOOL_LIST_TREE} or {TOOL_GREP}. If something is still unclear, explore "
-    "within those returned roots first. You can only access the roots returned here; "
-    "files outside them are not accessible. If the needed path or resource appears to "
-    "be outside those roots, stop and ask the user to help resolve that gap."
+    f"Use returned roots to explore with {TOOL_LIST_TREE}, {TOOL_GREP}, or "
+    f"{TOOL_READ_FILE}. Only returned roots are accessible. If the needed path is "
+    "outside them, stop and ask the user."
 )
 
 HINT_NO_ROOTS = (
