@@ -12,6 +12,16 @@ Tools are grouped by plugin. Each plugin is enabled or disabled as a unit in `co
 uv sync
 ```
 
+On Linux, `pyodbc` links to `libodbc.so.2` at import time regardless of which database type you use. Install `unixODBC` before starting the server:
+
+```bash
+# RHEL / CentOS
+sudo dnf install -y unixODBC
+
+# Ubuntu / Debian
+sudo apt-get install -y unixodbc
+```
+
 2. Create a local config file:
 
 ```bash

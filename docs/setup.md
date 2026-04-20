@@ -10,7 +10,29 @@
 uv sync
 ```
 
-如果你要启用 SQL Server 数据库插件, 还需要先在运行机器上安装 `ODBC Driver 18 for SQL Server`
+**Linux 上需要额外安装系统依赖**
+
+项目依赖 `pyodbc`, 它在启动时会链接系统的 `libodbc.so.2`, 不管你用 MySQL 还是 SQL Server 都需要装
+
+RHEL / CentOS:
+
+```bash
+sudo dnf install -y unixODBC
+```
+
+Ubuntu / Debian:
+
+```bash
+sudo apt-get install -y unixodbc
+```
+
+如果服务器没有外网, 用 `--disablerepo=epel` 等方式跳过无法访问的源:
+
+```bash
+sudo dnf install -y unixODBC --disablerepo=epel
+```
+
+如果你要启用 SQL Server 数据库插件, 还需要额外安装 `ODBC Driver 18 for SQL Server`
 
 ## 2. 创建配置文件
 
