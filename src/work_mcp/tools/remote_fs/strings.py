@@ -120,16 +120,19 @@ HINT_NO_ROOTS = (
 # list_tree hints
 # ---------------------------------------------------------------------------
 HINT_LIST_TREE_COMPLETE = (
-    "The directory listing is complete. Choose a relevant subdirectory and call "
-    f"{TOOL_LIST_TREE} again, or use {TOOL_READ_FILE} or {TOOL_GREP} if "
-    "you already know the target."
+    "The directory listing is complete. Entries are grouped with directories first, "
+    "then files; each group is sorted by most recently modified, then by name. "
+    "Choose a relevant subdirectory and call "
+    f"{TOOL_LIST_TREE} again, or use {TOOL_READ_FILE} or {TOOL_GREP} if you already know the target."
 )
 
 
 def build_list_tree_truncated_hint(offset: int, next_offset: int) -> str:
     return (
         f"The directory listing is capped at {MAX_TREE_ENTRIES} entries per page to keep "
-        f"responses manageable. Call {TOOL_LIST_TREE} again with offset={next_offset} for "
+        "responses manageable. Entries are grouped with directories first, then files; "
+        "each group is sorted by most recently modified, then by name. "
+        f"Call {TOOL_LIST_TREE} again with offset={next_offset} for "
         f"the next page (this page started at offset={offset}). If you already know a "
         f"narrower target, use {TOOL_GREP} with a path_glob instead."
     )

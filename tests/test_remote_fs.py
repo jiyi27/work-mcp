@@ -190,7 +190,7 @@ class TestListTree:
         assert result["success"] is False
         assert result["error_type"] == "invalid_argument"
 
-    def test_offset_pages_through_stable_directory_first_name_sorted_listing(
+    def test_offset_pages_through_stable_directory_first_newest_listing(
         self, root_dirs: tuple[Path, Path]
     ) -> None:
         root_a, root_b = root_dirs
@@ -215,8 +215,10 @@ class TestListTree:
 
         first_names = [Path(entry["path"]).name for entry in first_page["entries"]]
         assert first_names == [
-            f"file_{index:03d}.txt" for index in range(100)
+            f"file_{index:03d}.txt"
+            for index in range(MAX_TREE_ENTRIES + 4, 4, -1)
         ]
+        assert "mtime" in first_page["entries"][0]
 
         assert second_page["success"] is True
         assert second_page["truncated"] is False
@@ -224,9 +226,9 @@ class TestListTree:
         assert second_page["returned_count"] == 5
         assert second_page["next_offset"] == MAX_TREE_ENTRIES + 5
         second_names = [Path(entry["path"]).name for entry in second_page["entries"]]
-        assert second_names == [f"file_{index:03d}.txt" for index in range(100, 105)]
+        assert second_names == [f"file_{index:03d}.txt" for index in range(4, -1, -1)]
 
-    def test_directories_are_sorted_before_files_then_by_name(
+    def test_directories_are_sorted_before_files_then_by_mtime_desc_and_name(
         self, root_dirs: tuple[Path, Path]
     ) -> None:
         root_a, root_b = root_dirs
@@ -234,6 +236,10 @@ class TestListTree:
         (root_a / "a.txt").write_text("a\n")
         (root_a / "z_dir").mkdir()
         (root_a / "m_dir").mkdir()
+        os.utime(root_a / "b.txt", (1_700_000_004, 1_700_000_004))
+        os.utime(root_a / "a.txt", (1_700_000_003, 1_700_000_003))
+        os.utime(root_a / "z_dir", (1_700_000_001, 1_700_000_001))
+        os.utime(root_a / "m_dir", (1_700_000_002, 1_700_000_002))
 
         svc = _make_service((root_a, root_b))
 
@@ -243,8 +249,8 @@ class TestListTree:
         assert [Path(entry["path"]).name for entry in result["entries"]] == [
             "m_dir",
             "z_dir",
-            "a.txt",
             "b.txt",
+            "a.txt",
         ]
 
     def test_skips_root_hidden_entries_and_known_noise_directories(

@@ -4,6 +4,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -216,6 +217,7 @@ class RemoteFsService:
         fs_nodes.sort(
             key=lambda entry: (
                 0 if entry["type"] == "directory" else 1,
+                -entry["mtime_ts"],
                 Path(entry["path"]).name,
             )
         )
@@ -223,7 +225,7 @@ class RemoteFsService:
         page_entries = fs_nodes[offset:offset + MAX_TREE_ENTRIES]
         returned_count = len(page_entries)
         result_entries = [
-            {"path": entry["path"], "type": entry["type"]}
+            {"path": entry["path"], "type": entry["type"], "mtime": entry["mtime"]}
             for entry in page_entries
         ]
         next_offset = offset + returned_count
@@ -256,9 +258,15 @@ class RemoteFsService:
                 continue
             if child.is_dir() and _should_skip_tree_directory(child):
                 continue
+            try:
+                stat = child.stat()
+            except OSError:
+                continue
             entry: dict[str, Any] = {
                 "path": str(child),
                 "type": "directory" if child.is_dir() else "file",
+                "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                "mtime_ts": stat.st_mtime,
             }
             entries.append(entry)
 
