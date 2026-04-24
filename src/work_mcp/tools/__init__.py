@@ -3,20 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from importlib import import_module
+from typing import NamedTuple, cast
 
 from mcp.server.fastmcp import FastMCP
 
 from ..config import Settings
-from .database import register_database_tools
-from .dingtalk import register_dingtalk_tools
-from .jira import register_jira_tools
-from .log_search import register_log_search_tools
-from .remote_fs import register_remote_fs_tools
 
-PLUGIN_REGISTRY: dict[str, Callable[[FastMCP, Settings], None]] = {
-    "database": register_database_tools,
-    "dingtalk": register_dingtalk_tools,
-    "jira": register_jira_tools,
-    "log_search": register_log_search_tools,
-    "remote_fs": register_remote_fs_tools,
+
+RegisterTools = Callable[[FastMCP, Settings], None]
+
+
+class PluginSpec(NamedTuple):
+    module: str
+    function: str
+
+    def load(self) -> RegisterTools:
+        module = import_module(self.module)
+        register_fn = getattr(module, self.function)
+        return cast(RegisterTools, register_fn)
+
+
+PLUGIN_REGISTRY: dict[str, PluginSpec] = {
+    "database": PluginSpec("work_mcp.tools.database", "register_database_tools"),
+    "dingtalk": PluginSpec("work_mcp.tools.dingtalk", "register_dingtalk_tools"),
+    "jira": PluginSpec("work_mcp.tools.jira", "register_jira_tools"),
+    "log_search": PluginSpec("work_mcp.tools.log_search", "register_log_search_tools"),
+    "remote_fs": PluginSpec("work_mcp.tools.remote_fs", "register_remote_fs_tools"),
 }

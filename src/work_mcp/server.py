@@ -116,7 +116,7 @@ def create_mcp(settings: Settings) -> FastMCP:
                 f"Unknown plugin '{plugin_name}' in config.yaml. "
                 f"Available plugins: {known}"
             )
-        register_fn(mcp, settings)
+        register_fn.load()(mcp, settings)
     return mcp
 
 

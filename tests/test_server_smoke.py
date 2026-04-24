@@ -5,6 +5,8 @@ import base64
 import hashlib
 import hmac
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -202,6 +204,36 @@ def test_enabled_plugins_controls_which_tools_are_registered() -> None:
     )
     tools = asyncio.run(mcp_with_dingtalk.list_tools())
     assert [t.name for t in tools] == ["dingtalk_send_markdown"]
+
+
+def test_server_import_does_not_load_disabled_plugin_dependencies() -> None:
+    script = """
+import importlib.abc
+import sys
+
+
+class BlockPyodbc(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "pyodbc":
+            raise ImportError("blocked pyodbc")
+        return None
+
+
+sys.meta_path.insert(0, BlockPyodbc())
+import work_mcp.server
+
+assert "work_mcp.tools.database" not in sys.modules
+assert "pyodbc" not in sys.modules
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_enabled_plugins_can_register_jira_only() -> None:
